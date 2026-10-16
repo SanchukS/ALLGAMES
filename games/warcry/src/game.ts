@@ -696,7 +696,7 @@ export class Game {
 
     const attack = this.input.consumeAttackGesture();
     const yaw = this.input.aimYaw;
-    this.target = this.aimTarget(yaw, this.weapon.range, this.weapon.shape, this.weapon.arc);
+    this.target = this.aimTarget(yaw, this.weapon.range, this.weapon.shape, this.weapon.arc, this.weapon.id === 'hammer' ? this.weapon.range + STRIKE_PAD : 0);
     let want = ch.facing;
     if (this.input.aiming) want = yaw;
     else if (moving) want = Math.atan2(ix, iy);
@@ -716,7 +716,10 @@ export class Game {
       const distance = Math.hypot(at.x - p.x, at.z - p.z) / (weaponLevel(this.weaponItem) >= 5 ? 7 : 5);
       plan.damageScale = plan.areaScale = 1 + distance;
     }
-    this.attackPreview.update(at, plan?.yaw ?? yaw, (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1), w.shape === 'circle' ? 360 : w.arc,
+    const previewRadius = (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1);
+    const previewYaw = plan?.yaw ?? yaw;
+    const previewAt = this.weaponAttackCenter(at, w.id, plan?.kind ?? 'normal', previewYaw, previewRadius);
+    this.attackPreview.update(previewAt, previewYaw, previewRadius, w.shape === 'circle' ? 360 : w.arc,
       !this.cut && this.input.enabled && this.input.holdingAttack && (!!plan || this.input.aiming), this.hands[0].atkCd <= 0);
 
 
@@ -755,11 +758,11 @@ export class Game {
   }
 
   /** Only targets inside the player's selected direction can receive aimed projectiles. */
-  private aimTarget(yaw: number, range: number, shape: 'arc' | 'circle', arc: number): Unit | null {
+  private aimTarget(yaw: number, range: number, shape: 'arc' | 'circle', arc: number, ahead = 0): Unit | null {
     let target: Unit | null = null;
     let nearest = Infinity;
     for (const u of this.units) {
-      if (!u.hittable || !this.inShape(u.pos, u.radius, shape, arc, range, 0, yaw)) continue;
+      if (!u.hittable || !this.inShape(u.pos, u.radius, shape, arc, range, ahead, yaw)) continue;
       const d = u.pos.distanceTo(this.hero.position);
       if (d < nearest) { nearest = d; target = u; }
     }
@@ -786,7 +789,7 @@ export class Game {
       h.level = weaponLevel(it);
       h.parryPool = null; h.parryFocus = null;
       h.yaw = plan.yaw;
-      h.aim = this.aimTarget(plan.yaw, w.range, w.shape, w.arc);
+      h.aim = this.aimTarget(plan.yaw, w.range, w.shape, w.arc, w.id === 'hammer' ? w.range + STRIKE_PAD : 0);
       this.hero.facing = plan.yaw;
       if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge') charges.use(0);
       if (plan.kind === 'leap') charges.use(1);
@@ -883,6 +886,12 @@ export class Game {
     }
   }
 
+  /** A hammer circle starts at the hero's feet and extends forward; leaps land at its centre. */
+  private weaponAttackCenter(origin: THREE.Vector3, weapon: string, kind: AttackPlan['kind'], yaw: number, radius: number) {
+    const offset = weapon === 'hammer' && kind !== 'leap' ? radius : 0;
+    return origin.clone().add(new THREE.Vector3(Math.sin(yaw) * offset, 0, Math.cos(yaw) * offset));
+  }
+
   /** New weapons have no damage type. Ordinary strikes hit only the closest target. */
   private prototypeStrike(h: Hand, second = false) {
     const it = this.save.weapons[h.i];
@@ -894,7 +903,9 @@ export class Game {
     const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan.areaScale);
     const area = plan.kind !== 'normal';
     const p = this.hero.position;
-    let targets = this.units.filter(u => u.hittable && this.inShape(u.pos, u.radius, w.shape, w.arc, radius - STRIKE_PAD, 0, plan.yaw));
+    const center = this.weaponAttackCenter(p, it.def, plan.kind, plan.yaw, radius);
+    const ahead = it.def === 'hammer' && plan.kind !== 'leap' ? radius : 0;
+    let targets = this.units.filter(u => u.hittable && this.inShape(u.pos, u.radius, w.shape, w.arc, radius - STRIKE_PAD, ahead, plan.yaw));
     targets.sort((a, b) => p.distanceToSquared(a.pos) - p.distanceToSquared(b.pos));
     // Fighting enemies take precedence over harvestable scenery when both overlap the aim.
     if (!area) targets = [targets.find(u => u instanceof Mob && !u.passive) ?? targets[0]].filter((u): u is Unit => !!u);
@@ -902,11 +913,11 @@ export class Game {
     let hits = 0;
     sfx.swing();
     if (area) {
-      this.weaponEffects.slash(p, plan.yaw, radius, w.shape === 'circle' ? 360 : w.arc,
+      this.weaponEffects.slash(center, plan.yaw, radius, w.shape === 'circle' ? 360 : w.arc,
         it.def === 'hammer' ? 0xffb85b : level >= 3 ? 0x99faff : 0xe9f7ff, level >= 3);
       if (it.def === 'hammer') {
-        this.waves.add(p, radius, 0xffc06a, 0.28);
-        this.particles.burst(p.clone().setY(0.3), 0xd0a26d, 18, 0.13, 7, 0.4);
+        this.waves.add(center, radius, 0xffc06a, 0.28);
+        this.particles.burst(center.clone().setY(0.3), 0xd0a26d, 18, 0.13, 7, 0.4);
         this.shake = Math.max(this.shake, 0.15);
       }
     }
@@ -941,7 +952,7 @@ export class Game {
         if (it.def === 'hammer' && area && m.alive) {
           m.stun = Math.max(m.stun, 1);
           m.impact = -1;
-          m.knock.set(m.pos.x - p.x, 0, m.pos.z - p.z).normalize().multiplyScalar(9);
+          m.knock.set(m.pos.x - center.x, 0, m.pos.z - center.z).normalize().multiplyScalar(9);
         }
       }
     }

@@ -115,7 +115,7 @@ test('real updateHand schedules two area hits for double sweep, neither recharge
 
 test('real charged hammer hits expanded circle, knocks back and stuns each enemy', () => {
   const { g, h, calls, item } = setup('hammer', 2);
-  const a = enemy(0, 1), b = enemy(0, -1.5); a.impact = b.impact = .2;
+  const a = enemy(0, 1), b = enemy(0, 4); a.impact = b.impact = .2;
   g.units = [a, b];
   const gesture = { yaw: 0, heldSeconds: 2, sweepCount: 0, sweepYaw: 0, leap: false, distance: 0, aimed: false };
   g.updateHand(h, .01, gesture);
@@ -125,7 +125,7 @@ test('real charged hammer hits expanded circle, knocks back and stuns each enemy
   assert.ok(calls.every(c => c.damage === 20));
   assert.equal(a.stun, 1); assert.equal(b.stun, 1);
   assert.equal(a.impact, -1); assert.equal(b.impact, -1);
-  assert.ok(a.knock.z > 0 && b.knock.z < 0);
+  assert.ok(a.knock.z < 0 && b.knock.z > 0);
   assert.equal(g.chargesFor(item).remaining[0], 3);
 });
 
@@ -185,4 +185,25 @@ test('real leap path clamps landing at blockers and scales damage and area by ac
     assert.equal(calls.length, 1);
     assert.ok(Math.abs(calls[0].damage - (blocked ? 12 : 20)) < 1e-6);
   }
+});
+
+
+test('hammer ordinary and charged circles rotate in front of hero and exclude enemies behind', () => {
+  for (const kind of ['normal', 'charge']) {
+    const { g, h, calls } = setup('hammer', 2);
+    h.plan = { kind, yaw: Math.PI / 2, damageScale: 1, areaScale: kind === 'charge' ? 2 : 1, distance: 0 };
+    const front = enemy(2, 0), behind = enemy(-1, 0);
+    const initialHp = behind.hp;
+    g.units = [behind, front];
+    g.prototypeStrike(h);
+    assert.equal(calls.length, 1);
+    assert.equal(behind.hp, initialHp);
+    assert.ok(front.hp < initialHp);
+    const center = g.weaponAttackCenter(new THREE.Vector3(), 'hammer', kind, Math.PI / 2, 2);
+    assert.ok(Math.abs(center.x - 2) < 1e-6);
+    assert.ok(Math.abs(center.z) < 1e-6);
+  }
+  const { g } = setup('hammer', 4);
+  const landing = new THREE.Vector3(3, 0, 4);
+  assert.deepEqual(g.weaponAttackCenter(landing, 'hammer', 'leap', 0, 2), landing);
 });
