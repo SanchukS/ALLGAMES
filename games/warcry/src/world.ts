@@ -600,6 +600,26 @@ export class World {
     });
   }
 
+  /** A clear arena beside the north-west forest trail, outside the camp and other encounters. */
+  private buildForestDragon() {
+    for (let d = 0; d <= 30; d++) {
+      const steps = Math.max(1, d * 8);
+      for (let k = 0; k < steps; k++) {
+        const a = k / steps * Math.PI * 2;
+        const x = -18 + Math.sin(a) * d, z = -78 + Math.cos(a) * d;
+        if (zoneIdAt(x, z) !== 'forest' || inCamp(x, z, 10) || !this.free(x, z, 7)
+          || this.nearPack(x, z, 10) || this.taken.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 8)) continue;
+        this.bosses.push({ mob: 'forest_dragon', x, z });
+        this.packCenters.push([x, z]);
+        this.taken.push([x, z]);
+        this.keepOut.push([x, z, 8]);
+        this.areas.push({ name: 'Логово Чернокрыла', x, z, r: 9 });
+        return;
+      }
+    }
+    throw new Error('No clear forest arena for Чернокрыл');
+  }
+
   // ---------- camp ----------
   private buildCamp() {
     const H = this.faction === 'human';
@@ -806,6 +826,7 @@ export class World {
     this.campToFort(r);
     this.glovesGuards();
     this.buildZoo();
+    this.buildForestDragon();
 
     // Lumber camp in the east of the forest, outside the trail's north-east loop (every piece 5+ m off the trail)
     const L = { x: 38, z: -58 };
@@ -896,7 +917,7 @@ export class World {
     const rocks: Inst[] = [];
     const inForest = (x: number, z: number) => zoneIdAt(x, z) === 'forest';
     const open = (x: number, z: number) =>
-      inForest(x, z) && !inCamp(x, z, 3) && this.free(x, z, 1, true) && !this.nearPack(x, z, 5) && Math.hypot(x - fx, z - fz) > FORT.r + 4;
+      inForest(x, z) && !this.keepOut.some(([cx, cz, r]) => Math.hypot(x - cx, z - cz) < r) && !inCamp(x, z, 3) && this.free(x, z, 1, true) && !this.nearPack(x, z, 5) && Math.hypot(x - fx, z - fz) > FORT.r + 4;
     const randomSpot = () => {
       const a = r() * Math.PI * 2;
       const d = Math.sqrt(r()) * 56;
@@ -958,7 +979,7 @@ export class World {
       return { x: p.x + p.tz * off, z: p.z - p.tx * off };
     };
     const okProp = (x: number, z: number) =>
-      inForest(x, z) && !inCamp(x, z, 2) && Math.hypot(x - fx, z - fz) > FORT.r + 2 && this.free(x, z, 1) && pathDist(x, z) > PATH_W + 0.5;
+      inForest(x, z) && !this.keepOut.some(([cx, cz, r]) => Math.hypot(x - cx, z - cz) < r) && !inCamp(x, z, 2) && Math.hypot(x - fx, z - fz) > FORT.r + 2 && this.free(x, z, 1) && pathDist(x, z) > PATH_W + 0.5;
     const list = PROP_SPAWNERS.forest;
     this.spread(list.length, 6, nearTrail, okProp, true).forEach(({ x, z }, i) => this.addProp('forest', i, list[i], x, z, 'forest', r() * 6));
   }

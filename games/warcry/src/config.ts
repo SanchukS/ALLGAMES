@@ -307,6 +307,9 @@ export interface MobDef {
   speed: number;
   aggro: number;
   scale: number;
+  /** World-space body radius and nameplate height for unusually sized creature models. */
+  bodyRadius?: number;
+  nameplateHeight?: number;
   resist: Partial<Record<DamageType, ResistTier>>;
   /** HP fraction per second once nobody has hit the mob for MOB_REGEN_DELAY s. */
   regen: number;
@@ -600,6 +603,21 @@ export const MOBS: Record<string, MobDef> = {
     model: { human: ['wild_lion', null], orc: ['wild_lion', null] },
     anim: 'AxeAttack', hp: 130, dmg: 4, aps: 0.8, range: 1.7, speed: 3.0, aggro: 3.5, regen: 0.04, scale: 0.8,
     ...foes('forest'), reward: { power: 1 }, respawn: 20,
+  },
+  forest_dragon: {
+    id: 'forest_dragon', name: 'Чёрный дракон', creature: true, push: 5,
+    model: { human: ['wild_dragon', null], orc: ['wild_dragon', null] },
+    anim: 'AxeAttack', hp: 2400, dmg: 18, aps: 0.5, range: 2.8, speed: 2.2, aggro: 7,
+    regen: 0.02, scale: 0.32, bodyRadius: 1.2, nameplateHeight: 3.8,
+    ...foes('forest'), reward: { power: 8 }, respawn: 180,
+    resist: zoneResist('forest', 'boss'),
+    drop: { kind: 'weapon', def: 'hammer', rarity: 1 },
+    boss: {
+      ...BOSS_BASE, titles: { human: 'Чернокрыл', orc: 'Чернокрыл' }, zone: 'forest', unlocks: [],
+      slamRadius: 4.5, slamMul: 1.6, slamDelay: 1.4,
+      cd: 7, cdPhase2: 5, chance: 0,
+      cones: [{ half: 0.5, len: 9, mul: 2, yaws: [0], delay: 1.5 }],
+    },
   },
   wild_dragon: {
     id: 'wild_dragon', name: 'Чёрный дракон', creature: true, push: 6,

@@ -17,6 +17,11 @@ const zoneName = (id: ZoneId) => ZONES.find((z) => z.id === id)!.name;
 function teleport(g: Game, arg: string) {
   const [kind, id, i] = arg.split(':');
   const gate = GATES.find((t) => t.id === id) ?? GATES.find((t) => t.to === id);
+  if (kind === 'dragon') {
+    const dragon = g.world.bosses.find((b) => b.mob === 'forest_dragon');
+    if (dragon) g.debugTeleportTo(dragon.x, dragon.z + 6);
+    return;
+  }
   if (kind === 'door') {
     if (gate) g.debugTeleportTo(gate.x - gate.tx * 4, gate.z - gate.tz * 4);
     return;
@@ -73,7 +78,7 @@ function balanceTp(g: Game, arg: string) {
 /** One row per location: [entrance] [mini-boss] [boss]; the forest starts at the settlement instead of a door. */
 function locationRows(): [string, Action[]][] {
   const rows: [string, Action[]][] = [
-    [zoneName('forest'), [['Лагерь', (g) => g.debugTeleport('camp')], ['Мини', teleport, '', 'fmini'], ['Босс', teleport, '', 'fort'], ['Баланс+ТП', balanceTp, '', 'forest fort']]],
+    [zoneName('forest'), [['Лагерь', (g) => g.debugTeleport('camp')], ['Мини', teleport, '', 'fmini'], ['Босс', teleport, '', 'fort'], ['Дракон', teleport, '', 'dragon'], ['Баланс+ТП', balanceTp, '', 'forest fort']]],
   ];
   const seen = new Set<ZoneId>();
   // the Snow Pass right under the cemetery, the rest in map order

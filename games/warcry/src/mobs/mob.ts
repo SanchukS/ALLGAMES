@@ -100,7 +100,7 @@ export class Mob extends Unit {
     this.ch.position.copy(spawn);
     this.ch.facing = Math.random() * Math.PI * 2;
     this.maxHp = this.hp = Math.round(def.hp * mul.hp);
-    this.radius = def.static ? 0.8 : (def.creature ? 0.7 : 0.45) * scale;
+    this.radius = def.bodyRadius !== undefined ? def.bodyRadius * mul.scale : def.static ? 0.8 : (def.creature ? 0.7 : 0.45) * scale;
     this.wander.copy(spawn);
     this.behavior = behaviorOf(def, slot);
   }
@@ -113,7 +113,7 @@ export class Mob extends Unit {
   get boss() { return !!this.def.boss; }
   get mark() { return this.def.boss ? 'boss' as const : this.def.rank ?? null; }
   get hittable() { return this.alive && this.awake && this.rise <= 0 && this.ritual <= 0; }
-  get barY() { return (this.ch instanceof StaticBody ? this.ch.height + 0.3 : 2.15 * this.def.scale) * this.ch.root.scale.x; }
+  get barY() { return (this.ch instanceof StaticBody ? this.ch.height + 0.3 : this.def.nameplateHeight ?? 2.15 * this.def.scale) * this.ch.root.scale.x; }
   get barRange() { return this.def.boss || this.def.rank ? 24 : 16; }
   get loaderReady() { return !this.temp && ((!this.dying && this.deadT - this.paidAt > 2.2) || this.boss); }
   /** Ice staff tint (static bodies keep their colours). */
