@@ -1,3 +1,4 @@
+import { PROTOTYPE_WEAPONS } from './weaponProgression';
 import { FACTIONS, HERO, PETS, WEAPONS, type FactionId, type SavedSource, type StatId } from './config';
 import { BASE_STATS, type PctPoints, type StatPoints } from './balance';
 import { ARMOR, BAG_SIZE, makeItem, normalizeItem, type ArmorSlot, type Item } from './items';
@@ -77,7 +78,7 @@ export function newSave(faction: FactionId): SaveData {
     kits: {},
     active: 0,
     equip: {},
-    bag: [],
+    bag: ['hammer', 'dagger'].map((def) => makeItem('weapon', def, 0, 1)),
     gates: [],
     scale: SCALE,
     bosses: {},
@@ -131,6 +132,25 @@ export function loadSave(): SaveData | null {
     d.weapons = fitHands(d, d.kit ?? 'warrior', d.weapons);
     for (const k of Object.keys(d.kits ?? {}) as HeroClass[]) d.kits![k] = fitHands(d, k, d.kits![k]!);
     giveOrbs(d);
+    // Keep old class equipment safely stored while the prototype focuses on three melee weapons.
+    if ((d.kit ?? 'warrior') !== 'warrior') {
+      d.kits ??= {};
+      d.kits[d.kit!] = d.weapons;
+      d.weapons = d.kits.warrior ?? [makeItem('weapon', 'sword', 0, 1), null];
+      delete d.kits.warrior;
+    }
+    if ((d.gearOf ?? 'warrior') !== 'warrior') {
+      d.gear ??= {};
+      d.gear[d.gearOf!] = d.equip;
+      d.equip = d.gear.warrior ?? {};
+      delete d.gear.warrior;
+    }
+    d.cls = 'warrior'; d.kit = 'warrior'; d.gearOf = 'warrior';
+    // Make all three test weapons available in existing saves without resetting progress.
+    const owned = [...d.weapons, ...d.bag, ...Object.values(d.kits ?? {}).flat()].filter(Boolean);
+    for (const def of PROTOTYPE_WEAPONS) {
+      if (!owned.some((it) => it?.def === def)) d.bag.push(makeItem('weapon', def, 0, 1));
+    }
     return d;
   } catch {
     return null;

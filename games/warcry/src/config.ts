@@ -112,7 +112,11 @@ export const casterModel = (faction: FactionId, rarity: number) => `casters/${fa
 
 export const WEAPONS: Record<string, WeaponDef> = {
   sword: {
-    id: 'sword', name: 'Меч', type: 'slash', dmgMul: 1, aps: 1.15, shape: 'arc', arc: 140, range: 2.3,
+    id: 'sword', name: 'Меч', type: 'slash', dmgMul: 1, aps: 1, shape: 'arc', arc: 140, range: 2.3,
+    anim: 'SwordAttack', model: { human: 'sword_human_knight', orc: 'sword_orc_warrior' }, icon: '🗡️', single: true,
+  },
+  dagger: {
+    id: 'dagger', name: 'Кинжал', type: 'slash', dmgMul: 0.6, aps: 2, shape: 'arc', arc: 80, range: 1.5,
     anim: 'SwordAttack', model: { human: 'sword_human_knight', orc: 'sword_orc_warrior' }, icon: '🗡️', single: true,
   },
   axe: {
@@ -120,7 +124,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     anim: 'AxeAttack', model: { human: 'axe', orc: 'axe_orc_grunt' }, icon: '🪓',
   },
   hammer: {
-    id: 'hammer', name: 'Молот', type: 'crush', dmgMul: 1.7, aps: 0.7, shape: 'circle', arc: 360, range: 2.1,
+    id: 'hammer', name: 'Молот', type: 'crush', dmgMul: 1.8, aps: 0.65, shape: 'circle', arc: 360, range: 2.3 * Math.sqrt(140 / 360),
     anim: 'AxeAttack', model: { human: 'hammer_human_paladin', orc: 'hammer_human_paladin' }, icon: '🔨',
   },
   // board «Система оружий»: damage a bit under the sword, slow, long reach; thrust → thrust (target only) → spin 360°

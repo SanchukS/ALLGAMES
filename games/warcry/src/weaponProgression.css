@@ -1,0 +1,32 @@
+.weapon-description { margin: 8px 0 12px; line-height: 1.4; color: #e5d9c5; }
+.weapon-stats { gap: 8px; }.weapon-stats b { text-align: right; }
+.weapon-level-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; }
+.weapon-level-controls .btn { min-height: 40px; flex: 1; }.weapon-level-controls strong { white-space: nowrap; }
+.weapon-levels { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }
+.weapon-level { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid #786444; border-radius: 9px; background: #25231e; }
+.weapon-level-num { flex: 0 0 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #b18d40; color: #16130d; font-weight: bold; }
+.weapon-level strong { color: #f5df9f; }.weapon-level small { display: block; font-size: 10px; margin-top: 2px; color: #b9cbb1; }
+.weapon-level p { margin: 5px 0 0; font-size: 12px; line-height: 1.4; }
+.weapon-level.locked { border-color: #4b4842; background: #201f1c; color: #b6b1a7; }.weapon-level.locked strong { color: #bdb7a9; }.weapon-level.locked .weapon-level-num { background: #55514a; color: #ccc6bb; }.weapon-level.locked small { color: #aaa396; }
+.weapon-level.current { border-color: #edc66b; }.weapon-awakening { margin-top: 12px; display: grid; gap: 6px; }.weapon-awakening small { color: #bdb5a8; line-height: 1.4; }.weapon-equipped { text-align: center; color: #b6d5a4; }
+.weapon-level-controls button:disabled, .weapon-awakening button:disabled { opacity: .45; cursor: default; }
+/* Inventory uses a 760px design canvas scaled to the phone. Compensate text and
+   touch sizes so weapon cards remain readable at 360px as well as desktop. */
+#i-tip .tip.weapon-tip { width: 100%; max-width: 700px; max-height: calc(100% - 20px); display: flex; flex-direction: column; overflow: hidden; padding: 20px; font-size: max(24px, calc(13px / var(--ms, 1))); }
+.weapon-tip .weapon-fixed { flex: 0 0 auto; }
+.weapon-tip .weapon-scroll { overflow-y: auto; min-height: 0; overscroll-behavior: contain; padding-right: 5px; }
+.weapon-tip .card-title h3 { font-size: max(30px, calc(17px / var(--ms, 1))); }
+.weapon-tip .pills, .weapon-tip .weapon-stats, .weapon-tip .weapon-stats b { font-size: inherit; }
+.weapon-tip .weapon-stats { margin: 12px 0; }
+.weapon-tip .weapon-stats > div { align-items: baseline; gap: 12px; }
+.weapon-tip .weapon-stats b { max-width: 75%; }
+.weapon-tip .weapon-description { margin: 10px 0 16px; }
+.weapon-tip .weapon-level { gap: 14px; padding: 16px; border-radius: 14px; }
+.weapon-tip .weapon-levels { gap: 12px; }
+.weapon-tip .weapon-level-num { flex-basis: 42px; height: 42px; }
+.weapon-tip .weapon-level p { font-size: inherit; line-height: 1.4; margin-top: 8px; }
+.weapon-tip .weapon-level small, .weapon-tip .weapon-awakening small { font-size: max(22px, calc(12px / var(--ms, 1))); line-height: 1.4; }
+.weapon-tip .btn { font-size: inherit; min-height: calc(44px / var(--ms, 1)); white-space: normal; }
+.weapon-tip .card-head .xbtn { min-width: calc(40px / var(--ms, 1)); min-height: calc(40px / var(--ms, 1)); font-size: 30px; }
+.weapon-tip .weapon-level-controls { margin-bottom: 16px; gap: 12px; }
+.weapon-tip .weapon-awakening { margin-top: 18px; gap: 12px; }

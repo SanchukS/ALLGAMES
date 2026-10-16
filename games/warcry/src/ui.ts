@@ -176,7 +176,7 @@ export class UI {
       this.onArmor();
     });
     const party = $('party');
-    party.innerHTML = CLASS_IDS.map((c, i) => {
+    party.innerHTML = CLASS_IDS.filter((c) => c === 'warrior').map((c, i) => {
       const d = CLASSES[c];
       return `<button class="ui-block round-btn cls${d.locked ? ' locked' : ''}" data-cls="${c}" style="--c1:${d.color[0]};--c2:${d.color[1]}" aria-label="${d.name} (${i + 1})">${art(d.icon, 40)}<b>${i + 1}</b></button>`;
     }).join('');

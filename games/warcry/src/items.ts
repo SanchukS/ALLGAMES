@@ -1,3 +1,4 @@
+import { isPrototypeWeapon, weaponLevel } from './weaponProgression';
 // Items: weapons + armour, rarity, item level (zone), stats and generation.
 import { DAMAGE_TYPE_NAME, RARITY, RARITY_IDS, SHARPEN, WEAPONS, type FactionId, type ItemDrop, type PetDef, type StatId, type WeaponDef } from './config';
 import { DAMAGE_TYPE_ICON, icon } from './icons';
@@ -8,7 +9,7 @@ import { CLASS_LOOK, type Wearer } from './looks';
 /** Quality ids in model names (tools/blender/rarity_gear.py): `<def>_<id>`. */
 
 /** The warrior's weapons and shields have a GLB per quality (tools/blender/rarity_gear.py); other classes' don't. */
-const GEAR_DEFS = [...CLASSES.warrior.weapons, ...CLASSES.warrior.off];
+const GEAR_DEFS = ['sword', 'axe', 'hammer', 'polearm', ...CLASSES.warrior.off];
 
 /**
  * 3D model of a weapon, shield or staff: a staff's model per quality (WeaponDef.tiers); above common every warrior
@@ -51,6 +52,8 @@ export interface Item {
   lvl: number;
   /** Unique name (gacha banner weapons); replaces the generic def name. */
   name?: string;
+  /** Level-five awakening reserves future synergy access. */
+  awakened?: boolean;
 }
 
 export type ArmorSlot = 'head' | 'chest' | 'arms' | 'legs' | 'ring' | 'amulet';
@@ -140,13 +143,14 @@ export const itemClass = (it: Item): HeroClass | null =>
 export const lvlMult = (lvl: number) => 1 + 0.3 * (lvl - 1);
 
 /** The weapon's own flat damage: quality base + a fixed amount per extra copy. */
-export const weaponBase = (it: Item) => RARITY[it.rarity].base + RARITY[it.rarity].copy * (it.lvl - 1);
+export const weaponBase = (it: Item) => isPrototypeWeapon(it.def) ? 20 : RARITY[it.rarity].base + RARITY[it.rarity].copy * (it.lvl - 1);
 
 /**
  * (weapon base + the hero's flat `power`) × the hero's damage percents (`powerMul`) × the weapon's multiplier
  * (so a point of power is worth about the same DPS to a fast dagger and a slow hammer; old saves may carry sharpening).
  */
 export function weaponDamage(it: Item, power = 0, powerMul = 1) {
+  if (isPrototypeWeapon(it.def)) return (20 + power) * powerMul * WEAPONS[it.def].dmgMul;
   return (weaponBase(it) + power) * powerMul * WEAPONS[it.def].dmgMul * (1 + SHARPEN.perLevel * it.sharpen);
 }
 
@@ -183,7 +187,7 @@ export function itemName(it: Item, f: FactionId) {
 export function itemIconId(it: Item, w?: Wearer) {
   if (it.kind === 'weapon') {
     const tier = `${it.def}_${RARITY_IDS[it.rarity]}`;
-    return hasPng(tier) ? tier : it.def;
+    return hasPng(tier) ? tier : it.def === 'dagger' ? 'sword' : it.def;
   }
   const slot = ARMOR[it.def].slot;
   if (!w) return slot;
@@ -203,8 +207,9 @@ export function cellHtml(it: Item | null | undefined, attrs = '', placeholder = 
     const ph = !placeholder ? '' : hasPng(placeholder) ? art(placeholder, 30, 'ic ph') : icon(placeholder, '#ffffff55', 30, 'ic');
     return `<button class="cell empty ${cls}" ${attrs}>${ph}${extra}</button>`;
   }
-  const badge = it.kind === 'weapon' && !WEAPONS[it.def].guard ? `<span class="badge">${icon(DAMAGE_TYPE_ICON[WEAPONS[it.def].type], '#4a2a12', 12)}</span>` : '';
-  return `<button class="cell r${it.rarity} ${cls}" ${attrs}>${art(itemIconId(it, w), 34, 'ic')}${badge}` +
+  const badge = it.kind === 'weapon' && !isPrototypeWeapon(it.def) && !WEAPONS[it.def].guard ? `<span class="badge">${icon(DAMAGE_TYPE_ICON[WEAPONS[it.def].type], '#4a2a12', 12)}</span>` : '';
+  const accessibleName = it.kind === 'weapon' ? `${WEAPONS[it.def].name}, уровень ${it.lvl}` : undefined;
+  return `<button class="cell r${it.rarity} ${cls}" ${accessibleName ? `aria-label="${accessibleName}"` : ''} ${attrs}>${art(itemIconId(it, w), 34, 'ic')}${badge}` +
     `<span class="lv">${it.lvl}</span>${it.sharpen ? `<span class="sh">+${it.sharpen}</span>` : ''}${extra}</button>`;
 }
 
@@ -221,6 +226,7 @@ export function scrapValue(it: Item) {
 export function itemLines(it: Item): [string, string][] {
   if (it.kind === 'weapon') {
     const w = WEAPONS[it.def];
+    if (isPrototypeWeapon(it.def)) return [['Урон', `${Math.round(w.dmgMul * 100)}% урона персонажа`], ['Атак/с', String(w.aps)], ['Область', w.shape === 'circle' ? `Круг · ${w.range.toFixed(2)} м` : `Сектор ${w.arc}° · ${w.range} м`]];
     const g = w.guard;
     if (g) {
       const pc = (x: number) => `${Math.round(x * 100)}%`;
@@ -260,7 +266,7 @@ export function orbLine(o: NonNullable<WeaponDef['orb']>): [string, string] {
 export const fixedRarity = (kind: ItemKind, def: string) => (kind === 'weapon' ? WEAPONS[def]?.rarity : undefined);
 
 export function makeItem(kind: ItemKind, def: string, rarity: number, lvl: number): Item {
-  return { uid: newUid(), kind, def, rarity: fixedRarity(kind, def) ?? rarity, sharpen: 0, lvl };
+  return { uid: newUid(), kind, def, rarity: fixedRarity(kind, def) ?? rarity, sharpen: 0, lvl: kind === 'weapon' && isPrototypeWeapon(def) ? weaponLevel({ lvl }) : lvl };
 }
 
 /** The item a mob's `drop` describes (one copy). */
@@ -270,7 +276,7 @@ export const dropIconId = (d: ItemDrop) => (d.kind === 'weapon' ? d.def : ARMOR[
 
 /** Old saves stored bare {def, rarity, sharpen} weapons. Items taken out of the game become the kept one of their slot. */
 const RENAMED: Record<string, string> = {
-  nagamaki: 'polearm', shield: 'shield_spiked', shield_tower: 'shield_spiked', shield_buckler: 'shield_spiked',
+  axe: 'hammer', polearm: 'sword', nagamaki: 'sword', shield: 'shield_spiked', shield_tower: 'shield_spiked', shield_buckler: 'shield_spiked',
   ring_power: 'ring_swift', amulet_life: 'amulet_spring',
 };
 
@@ -279,5 +285,5 @@ export function normalizeItem(it: Partial<Item> & { def: string }): Item {
   const old = /^(peasant|guard|knight|lord)_(head|chest|arms|legs)$/.exec(it.def);
   const def = old ? `plate_${old[2]}` : RENAMED[it.def] ?? it.def;
   const kind = it.kind ?? 'weapon';
-  return { uid: it.uid ?? newUid(), kind, def, rarity: fixedRarity(kind, def) ?? it.rarity ?? 0, sharpen: it.sharpen ?? 0, lvl: it.lvl ?? 1, ...(it.name ? { name: it.name } : {}) };
+  return { uid: it.uid ?? newUid(), kind, def, rarity: fixedRarity(kind, def) ?? it.rarity ?? 0, sharpen: it.sharpen ?? 0, lvl: kind === 'weapon' && isPrototypeWeapon(def) ? weaponLevel(it) : it.lvl ?? 1, ...(it.awakened && weaponLevel(it) === 5 ? { awakened: true } : {}), ...(it.name ? { name: it.name } : {}) };
 }

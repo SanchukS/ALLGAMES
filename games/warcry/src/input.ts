@@ -1,3 +1,4 @@
+import { AttackGestureTracker, type AttackGesture } from './attackGesture';
 /**
  * Floating movement stick plus an independent, fixed attack stick.
  * Drag the attack stick to aim; release outside its dead zone to strike. WASD/arrows move on desktop.
@@ -17,7 +18,14 @@ export class Input {
   private attackButton: HTMLButtonElement;
   private attackKnob: HTMLSpanElement;
   private attackOrigin = [0, 0];
-  private pendingAttack: number | null = null;
+  private pendingGesture: AttackGesture | null = null;
+  private gesture = new AttackGestureTracker();
+  private lastMovementYaw: number | null = null;
+
+  get holdingAttack() { return this.attackId !== null; }
+  get attackGesture(): AttackGesture | null {
+    return this.holdingAttack ? this.gesture.snapshot(performance.now()) : null;
+  }
   aiming = false;
   aimYaw = 0;
 
@@ -30,12 +38,18 @@ export class Input {
 
   /** Each release is consumed once; returning to the centre cancels the shot. */
   consumeAttack(): number | null {
-    const yaw = this.enabled ? this.pendingAttack : null;
-    this.pendingAttack = null;
-    return yaw;
+    const gesture = this.consumeAttackGesture();
+    return gesture?.aimed ? gesture.yaw : null;
+  }
+
+  consumeAttackGesture(): AttackGesture | null {
+    const result = this.enabled ? this.pendingGesture : null;
+    this.pendingGesture = null;
+    return result;
   }
 
   private cancelAim() {
+    this.gesture.reset();
     this.attackId = null;
     this.aiming = false;
     this.attackKnob.style.transform = 'translate(-50%, -50%)';
@@ -60,6 +74,7 @@ export class Input {
       const len = Math.hypot(dx, dy), scale = Math.min(1, 46 / Math.max(1, len));
       this.aiming = len >= 10;
       if (this.aiming) this.aimYaw = Math.atan2(dx, dy);
+      this.gesture.sample(this.aimYaw, len / 46, performance.now());
       this.attackButton.classList.toggle('aiming', this.aiming);
       this.attackKnob.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
     };
@@ -67,6 +82,9 @@ export class Input {
       e.stopPropagation();
       if (!this.enabled || this.attackId !== null || e.button !== 0) return;
       this.attackId = e.pointerId;
+      const movement = this.vector;
+      if (Math.hypot(...movement) > 0.1) this.lastMovementYaw = Math.atan2(movement[0], movement[1]);
+      this.gesture.begin(performance.now(), this.lastMovementYaw);
       const r = this.attackButton.getBoundingClientRect();
       this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
       this.attackButton.setPointerCapture(e.pointerId);
@@ -79,11 +97,16 @@ export class Input {
     this.attackButton.addEventListener('pointerup', e => {
       if (e.pointerId !== this.attackId) return;
       aim(e);
-      if (this.enabled && this.aiming) this.pendingAttack = this.aimYaw;
+      if (this.enabled) this.pendingGesture = this.gesture.snapshot(performance.now());
       this.cancelAim();
     });
     for (const type of ['pointercancel', 'lostpointercapture']) {
-      this.attackButton.addEventListener(type, () => this.cancelAim());
+      this.attackButton.addEventListener(type, e => {
+        // Normal release loses capture after queuing its shot: preserve that shot.
+        if ((e as PointerEvent).pointerId !== this.attackId) return;
+        this.pendingGesture = null;
+        this.cancelAim();
+      });
     }
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
 
@@ -148,8 +171,10 @@ export class Input {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) ky += 1;
     if (kx || ky) {
       const l = Math.hypot(kx, ky);
+      this.lastMovementYaw = Math.atan2(kx, ky);
       return [kx / l, ky / l];
     }
+    if (Math.hypot(this.x, this.y) > 0.1) this.lastMovementYaw = Math.atan2(this.x, this.y);
     return [this.x, this.y];
   }
 
@@ -160,7 +185,8 @@ export class Input {
 
   reset() {
     this.pointerId = null;
-    this.pendingAttack = null;
+    this.pendingGesture = null;
+    this.lastMovementYaw = null;
     this.cancelAim();
     this.x = this.y = 0;
     this.keys.clear();

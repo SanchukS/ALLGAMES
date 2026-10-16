@@ -34,7 +34,7 @@ const WAKE = new THREE.Vector3(0, 0, -2.2);
 const ARENA_R = 21;
 const SKELETON_SPAWNS = [new THREE.Vector3(-13, 0, 6), new THREE.Vector3(12, 0, 9), new THREE.Vector3(-2, 0, 16)];
 const SKEL = { hp: 60, dmg: 6, aps: 0.7, range: 1.9, speed: 2.6, aggro: 7, leash: 13, radius: 0.5 };
-const GHOST = { dmg: 24, aps: 1.15, range: 2.3, arc: 140 };
+const GHOST = { dmg: 24, aps: 1, range: 2.3, arc: 140 };
 const TURN_IN_DIST = 3.6;
 
 const v1 = new THREE.Vector3();
@@ -314,6 +314,7 @@ export class Prologue {
     this.renderQuest();
     this.hint('Тяни слева (или WASD), чтобы идти', 4000);
     setTimeout(() => this.stage === 'hunt' && this.kills === 0 && this.hint('Тяни красный джойстик, чтобы целиться. Отпусти — удар!', 4000), 4500);
+    setTimeout(() => this.stage === 'hunt' && this.hint('Сейчас у тебя меч 1-го уровня. Прокачка оружия откроется после пролога.', 4500), 9500);
   }
 
   private questDone() {
@@ -517,6 +518,8 @@ export class Prologue {
   private strike() {
     sfx.swing();
     const p = this.hero.position;
+    let target: Skeleton | null = null;
+    let closest = Infinity;
     for (const s of this.skeletons) {
       if (s.state === 'dead') continue;
       const dx = s.ch.position.x - p.x;
@@ -525,16 +528,19 @@ export class Prologue {
       if (d - SKEL.radius > GHOST.range + 0.35) continue;
       const a = Math.atan2(Math.sin(Math.atan2(dx, dz) - this.strikeYaw), Math.cos(Math.atan2(dx, dz) - this.strikeYaw));
       if (d > 0.6 && Math.abs(a) > THREE.MathUtils.degToRad(GHOST.arc / 2) + Math.atan2(SKEL.radius, d)) continue;
-      const dmg = Math.round((GHOST.dmg + this.power) * (0.9 + Math.random() * 0.2));
-      s.hp -= dmg;
-      s.ch.hit();
-      if (s.state !== 'return') s.state = 'chase';
-      s.knock.set(dx, 0, dz).normalize().multiplyScalar(3.5);
-      this.fx.spawn(v1.copy(s.ch.position).setY(2), String(dmg), 'dmg');
-      sfx.hit();
-      this.particles.burst(v2.copy(s.ch.position).setY(1.1), 0xd8d4c8, 4, 0.08, 4, 0.45);
-      if (s.hp <= 0) this.killSkeleton(s);
+      if (d < closest) { target = s; closest = d; }
     }
+    if (!target) return;
+    const s = target;
+    const dmg = Math.round(GHOST.dmg + this.power);
+    s.hp -= dmg;
+    s.ch.hit();
+    if (s.state !== 'return') s.state = 'chase';
+    s.knock.copy(s.ch.position).sub(p).setY(0).normalize().multiplyScalar(3.5);
+    this.fx.spawn(v1.copy(s.ch.position).setY(2), String(dmg), 'dmg');
+    sfx.hit();
+    this.particles.burst(v2.copy(s.ch.position).setY(1.1), 0xd8d4c8, 4, 0.08, 4, 0.45);
+    if (s.hp <= 0) this.killSkeleton(s);
   }
 
   private killSkeleton(s: Skeleton) {

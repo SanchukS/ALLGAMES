@@ -1,3 +1,7 @@
+import { AbilityCharges, daggerHit, planWeaponAttack, type AttackPlan } from './weaponAbilities';
+import { isPrototypeWeapon, weaponLevel } from './weaponProgression';
+import type { AttackGesture } from './attackGesture';
+import { WeaponEffects } from './weaponEffects';
 import { AttackPreview } from './attackPreview';
 import * as THREE from 'three';
 import { Character } from './character';
@@ -103,6 +107,12 @@ class Prop extends Unit {
 export class Game {
   readonly scene = new THREE.Scene();
   private attackPreview = new AttackPreview(this.scene);
+  private weaponEffects = new WeaponEffects(this.scene);
+  private abilityCharges = new Map<number, AbilityCharges>();
+  private daggerStacks = new WeakMap<Mob, Map<number, number>>();
+  private parries = new Map<Mob, { pool: { left: number }; until: number }>();
+  private leap: { from: THREE.Vector3; to: THREE.Vector3; t: number; duration: number } | null = null;
+  private abilityDots!: [HTMLSpanElement, HTMLSpanElement];
   readonly camera: THREE.PerspectiveCamera;
   world: World;
   hero: Character;
@@ -265,9 +275,10 @@ export class Game {
     this.fx = new FloatingText(labels, this.camera);
     const hb = document.createElement('div');
     hb.className = 'herohp';
-    hb.innerHTML = '<div class="fill"></div><span></span>';
+    hb.innerHTML = '<div class="fill"></div><span></span><div class="ability-dots"><span class="ability-dot first"></span><span class="ability-dot second"></span></div>';
     labels.appendChild(hb);
     this.heroBar = { el: hb, fill: hb.querySelector('.fill')!, text: hb.querySelector('span')! };
+    this.abilityDots = Array.from(hb.querySelectorAll<HTMLSpanElement>('.ability-dot')) as [HTMLSpanElement, HTMLSpanElement];
     this.particles = new Particles(this.scene);
     this.arrows = new Arrows(this.scene);
     this.telegraphs = new Telegraphs(this.scene);
@@ -335,7 +346,7 @@ export class Game {
   }
 
   /** The class can take the field: it is not closed (ClassDef.locked) or a boss has opened it. */
-  classOpen(c: HeroClass) { return !CLASSES[c].locked || !!this.save.classes?.includes(c); }
+  classOpen(c: HeroClass) { return c === 'warrior'; }
 
   /** Opens closed class `c` for good (saved); false if it was open already. */
   private openClass(c: HeroClass) {
@@ -556,6 +567,8 @@ export class Game {
     this.particles.update(dt);
     this.arrows.update(dt);
     this.waves.update(dt);
+    this.weaponEffects.update(dt);
+    for (const [mob, parry] of this.parries) if (!mob.alive || parry.until < this.time) this.parries.delete(mob);
     this.updateGusts(dt);
     this.world.fog.update(dt);
     this.spells.update(dt);
@@ -626,6 +639,7 @@ export class Game {
     hb.fill.style.width = `${(this.hp / this.maxHp) * 100}%`;
     hb.text.textContent = fmtK(Math.ceil(this.hp));
     hb.el.classList.toggle('low', this.hp < this.maxHp * 0.3);
+    this.updateAbilityDots();
     this.updateMobBars(w, h);
     this.hudT -= dt;
     if (this.hudT <= 0) { this.hudT = 0.1; this.refreshHud(false); }
@@ -644,7 +658,7 @@ export class Game {
       return;
     }
     const [ix, iy] = this.cut ? [0, 0] : this.input.vector;
-    const moving = Math.hypot(ix, iy) > 0.05;
+    const moving = !this.leap && Math.hypot(ix, iy) > 0.05;
     this.moveDir.set(ix, 0, iy);
     const p = ch.position;
     const speed = this.speed * this.heroSlow;
@@ -653,7 +667,13 @@ export class Game {
       p.addScaledVector(this.moveDir, speed * dt);
       ch.walkRate = Math.min(2.4, (speed * this.moveDir.length()) / 2.1);
     }
-    if (this.heroKnock.lengthSq() > 0.001) {
+    if (this.leap) {
+      this.leap.t += dt;
+      const f = Math.min(1, this.leap.t / this.leap.duration);
+      p.lerpVectors(this.leap.from, this.leap.to, f);
+      p.y = Math.sin(f * Math.PI) * 1.8;
+    }
+    if (!this.leap && this.heroKnock.lengthSq() > 0.001) {
       p.addScaledVector(this.heroKnock, dt);
       this.heroKnock.multiplyScalar(Math.max(0, 1 - dt * 9));
     }
@@ -674,7 +694,7 @@ export class Game {
     this.world.collide(p, HERO.radius);
     this.collideBlockers(p, HERO.radius);
 
-    const attack = this.input.consumeAttack();
+    const attack = this.input.consumeAttackGesture();
     const yaw = this.input.aimYaw;
     this.target = this.aimTarget(yaw, this.weapon.range, this.weapon.shape, this.weapon.arc);
     let want = ch.facing;
@@ -682,14 +702,23 @@ export class Game {
     else if (moving) want = Math.atan2(ix, iy);
     const swinging = this.hands.find(h => h.impact >= 0);
     if (swinging) want = swinging.yaw;
-    if (attack !== null) want = attack;
+    if (attack?.aimed) want = attack.yaw;
     const diff = Math.atan2(Math.sin(want - ch.facing), Math.cos(want - ch.facing));
     ch.facing += diff * Math.min(1, dt * 16);
 
     for (const h of this.hands) this.updateHand(h, dt, this.cut ? null : attack);
     const w = this.weapon;
-    this.attackPreview.update(p, yaw, w.range + STRIKE_PAD, w.shape === 'circle' ? 360 : w.arc,
-      !this.cut && this.input.enabled && this.input.aiming, this.hands[0].atkCd <= 0);
+    const live = this.input.attackGesture;
+    const charges = this.chargesFor(this.weaponItem);
+    const plan = live && planWeaponAttack(w.id, weaponLevel(this.weaponItem), live, charges.remaining[0] === 0, charges.remaining[1] === 0);
+    const at = plan?.kind === 'leap' ? this.leapTarget(plan.yaw, plan.distance, weaponLevel(this.weaponItem)) : p;
+    if (plan?.kind === 'leap') {
+      const distance = Math.hypot(at.x - p.x, at.z - p.z) / (weaponLevel(this.weaponItem) >= 5 ? 7 : 5);
+      plan.damageScale = plan.areaScale = 1 + distance;
+    }
+    this.attackPreview.update(at, plan?.yaw ?? yaw, (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1), w.shape === 'circle' ? 360 : w.arc,
+      !this.cut && this.input.enabled && this.input.holdingAttack && (!!plan || this.input.aiming), this.hands[0].atkCd <= 0);
+
 
     // regen; much faster in the camp
     let rate = this.regen; // HP per second
@@ -738,23 +767,41 @@ export class Game {
   }
 
   /** One hand's swing timer; the blow lands `impact` s after the swing starts. */
-  private updateHand(h: Hand, dt: number, attack: number | null) {
+  private updateHand(h: Hand, dt: number, attack: AttackGesture | null) {
     const it = this.save.weapons[h.i];
     if (!it) { h.combo = 0; h.impact = -1; return; }
     const w = WEAPONS[it.def];
     // the shield never swings, it only answers blows (shieldAnswer); the mage's orb never swings either
     if (w.guard || w.orb) { h.combo = 0; return; }
     h.atkCd -= dt;
+    if (h.second >= 0) {
+      h.second -= dt;
+      if (h.second < 0) this.prototypeStrike(h, true);
+    }
     const period = 1 / w.aps;
-    if (attack !== null && h.atkCd <= 0) {
-      h.yaw = attack;
-      h.aim = this.aimTarget(attack, w.range, w.shape, w.arc);
-      this.hero.facing = attack;
+    const charges = this.chargesFor(it);
+    const plan = attack && planWeaponAttack(it.def, weaponLevel(it), attack, charges.remaining[0] === 0, charges.remaining[1] === 0);
+    if (plan && h.atkCd <= 0 && !this.leap) {
+      h.plan = plan;
+      h.level = weaponLevel(it);
+      h.parryPool = null; h.parryFocus = null;
+      h.yaw = plan.yaw;
+      h.aim = this.aimTarget(plan.yaw, w.range, w.shape, w.arc);
+      this.hero.facing = plan.yaw;
+      if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge') charges.use(0);
+      if (plan.kind === 'leap') charges.use(1);
       h.combo++;
       h.lastSwing = this.time;
       // the cast clip's release is late (1.13 s), so staves aren't capped: a cap would play it 3-5x too fast
       const impactAt = w.staff ? period * 0.4 : Math.min(0.42, period * 0.4);
       h.impactAt = impactAt;
+      if (plan.kind === 'leap') {
+        const from = this.hero.position.clone().setY(0);
+        const to = this.leapTarget(plan.yaw, plan.distance, h.level);
+        plan.distance = from.distanceTo(to) / (h.level >= 5 ? 7 : 5);
+        plan.damageScale = plan.areaScale = 1 + plan.distance;
+        this.leap = { from, to, t: 0, duration: impactAt };
+      }
       h.launch = -1;
       if (w.staff) {
         h.launch = impactAt;
@@ -784,14 +831,135 @@ export class Game {
     }
     if (h.impact >= 0) {
       h.impact -= dt;
-      if (h.impact < 0) this.heroStrike(h, h.yaw, h.aim);
+      if (h.impact < 0) {
+        if (h.plan?.kind === 'leap' && this.leap) {
+          this.hero.position.copy(this.leap.to); this.leap = null;
+        }
+        this.heroStrike(h, h.yaw, h.aim);
+        if (h.plan?.kind === 'doubleSweep') h.second = 0.1;
+      }
       if (h.impact < 0) { h.bolt = null; h.aim = null; }
     }
   }
 
+  private chargesFor(it: Item) {
+    let charges = this.abilityCharges.get(it.uid);
+    if (!charges) { charges = new AbilityCharges(); this.abilityCharges.set(it.uid, charges); }
+    return charges;
+  }
+
+  /** Follow the ground path so a leap cannot bypass walls, gates or arena blockers. */
+  private leapTarget(yaw: number, distance: number, level: number) {
+    const from = this.hero.position.clone().setY(0);
+    const range = (level >= 5 ? 7 : 5) * distance;
+    const end = from.clone();
+    for (let d = 0.2; d <= range + 0.2; d += 0.2) {
+      const step = Math.min(range, d);
+      const wanted = from.clone().add(new THREE.Vector3(Math.sin(yaw) * step, 0, Math.cos(yaw) * step));
+      const checked = wanted.clone();
+      this.world.collide(checked, HERO.radius);
+      this.collideBlockers(checked, HERO.radius);
+      if (checked.distanceToSquared(wanted) > 0.0025) break;
+      end.copy(checked);
+      if (step === range) break;
+    }
+    return end;
+  }
+
+  private updateAbilityDots() {
+    const it = this.weaponItem;
+    const level = weaponLevel(it);
+    const charges = this.chargesFor(it);
+    const stacks = this.target instanceof Mob ? this.daggerStacks.get(this.target)?.get(it.uid) ?? 0 : 0;
+    for (const slot of [0, 1] as const) {
+      const dot = this.abilityDots[slot];
+      const locked = level < (slot === 0 ? 2 : 4);
+      const left = it.def === 'dagger' ? 0 : it.def === 'sword' && slot === 1 ? 0 : charges.remaining[slot];
+      dot.classList.toggle('locked', locked);
+      dot.classList.toggle('cooldown', !locked && left > 0);
+      dot.textContent = locked ? '×' : left > 0 ? String(left) : it.def === 'dagger' && slot === 1 ? String(stacks % 10) : '';
+      dot.title = locked ? `Откроется на уровне ${slot === 0 ? 2 : 4}` : left > 0 ? `Обычных попаданий до готовности: ${left}` : it.def === 'dagger' ? `Стаки на цели: ${stacks}` : 'Готово';
+      dot.setAttribute('aria-label', `Способность ${slot + 1}: ${dot.title}`);
+    }
+  }
+
+  /** New weapons have no damage type. Ordinary strikes hit only the closest target. */
+  private prototypeStrike(h: Hand, second = false) {
+    const it = this.save.weapons[h.i];
+    if (!it || !isPrototypeWeapon(it.def)) return 0;
+    const w = WEAPONS[it.def];
+    const plan = h.plan ?? { kind: 'normal', yaw: h.yaw, damageScale: 1, areaScale: 1, distance: 0 };
+    const level = h.level;
+    if (second) this.hero.swing('slashLR', h.i, 0.25, 0.05);
+    const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan.areaScale);
+    const area = plan.kind !== 'normal';
+    const p = this.hero.position;
+    let targets = this.units.filter(u => u.hittable && this.inShape(u.pos, u.radius, w.shape, w.arc, radius - STRIKE_PAD, 0, plan.yaw));
+    targets.sort((a, b) => p.distanceToSquared(a.pos) - p.distanceToSquared(b.pos));
+    // Fighting enemies take precedence over harvestable scenery when both overlap the aim.
+    if (!area) targets = [targets.find(u => u instanceof Mob && !u.passive) ?? targets[0]].filter((u): u is Unit => !!u);
+    const parryTargets: Mob[] = [];
+    let hits = 0;
+    sfx.swing();
+    if (area) {
+      this.weaponEffects.slash(p, plan.yaw, radius, w.shape === 'circle' ? 360 : w.arc,
+        it.def === 'hammer' ? 0xffb85b : level >= 3 ? 0x99faff : 0xe9f7ff, level >= 3);
+      if (it.def === 'hammer') {
+        this.waves.add(p, radius, 0xffc06a, 0.28);
+        this.particles.burst(p.clone().setY(0.3), 0xd0a26d, 18, 0.13, 7, 0.4);
+        this.shake = Math.max(this.shake, 0.15);
+      }
+    }
+    for (const u of targets) {
+      if (u instanceof Prop) {
+        const hit = this.damageFor(it, u.def, plan.damageScale);
+        this.hitProp(u, hit.dmg, hit.tier);
+        continue;
+      }
+      const m = u as Mob;
+      const stacks = this.daggerStacks.get(m)?.get(it.uid) ?? 0;
+      const dagger = daggerHit(stacks, level);
+      const multiplier = it.def === 'dagger' && !m.passive ? dagger.damageMultiplier + dagger.bonusMultiplier : plan.damageScale;
+      const hit = this.damageFor(it, m.def, multiplier);
+      const wasAttacking = m.impact >= 0 || m.casting > 0 || m.animDelay >= 0;
+      const before = m.hp;
+      const fight = this.fightOf(m);
+      this.damageMob(m, hit.dmg, hit.tier, it.def === 'hammer' && area ? 9 : 2, hit.fx);
+      if (m.hp >= before) continue;
+      hits++;
+      fight.hits++;
+      if (!m.passive) {
+        if (!area) this.chargesFor(it).normalHit();
+        if (it.def === 'dagger' && level >= 2 && m.alive) {
+          let byWeapon = this.daggerStacks.get(m);
+          if (!byWeapon) { byWeapon = new Map(); this.daggerStacks.set(m, byWeapon); }
+          byWeapon.set(it.uid, dagger.stacks);
+          this.fx.spawn(m.pos.clone().setY(2.6), `${dagger.stacks} ст.`, 'dmg', 0.5, { color: '#ff9393' });
+          if (dagger.bonusMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
+        }
+        if (it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
+        if (it.def === 'hammer' && area && m.alive) {
+          m.stun = Math.max(m.stun, 1);
+          m.impact = -1;
+          m.knock.set(m.pos.x - p.x, 0, m.pos.z - p.z).normalize().multiplyScalar(9);
+        }
+      }
+    }
+    if (parryTargets.length) {
+      const s = this.stats;
+      const pool = h.parryPool ??= { left: (20 + s.power) * s.powerMul * (level >= 5 ? 2 : 1) };
+      h.parryFocus ??= parryTargets[0];
+      for (const m of level >= 5 ? parryTargets : parryTargets.filter(m => m === h.parryFocus)) {
+        this.parries.set(m, { pool, until: this.time + Math.max(m.impact, m.casting, 0.3) + 0.3 });
+      }
+      this.weaponEffects.slash(p, plan.yaw, 1.15, 140, 0xffdc70, true);
+    }
+    return hits;
+  }
+
   /** A blow on mob `def`: it may dodge (dmg 0, `fx` 'miss') or take a crit (`fx` 'crit'). */
   private damageFor(it: Item, def: Pick<MobDef, 'resist' | 'dodge'>, mult = 1) {
-    const tier = def.resist[WEAPONS[it.def].type] ?? 'normal';
+    const tier = isPrototypeWeapon(it.def) ? 'normal' : def.resist[WEAPONS[it.def].type] ?? 'normal';
     if (Math.random() < dodgeChance(def.dodge)) return { dmg: 0, tier, fx: 'miss' as HitFx };
     const s = this.stats;
     const crit = Math.random() < s.crit;
@@ -827,6 +995,7 @@ export class Game {
   private heroStrike(h: Hand, yaw = this.hero.facing, focus: Unit | null = this.target) {
     const it = this.save.weapons[h.i];
     if (!it) return 0;
+    if (isPrototypeWeapon(it.def)) return this.prototypeStrike(h);
     const w = WEAPONS[it.def];
     if (w.shot) return this.shoot(it, w, yaw, focus);
     const { shape, arc, range } = w;
@@ -1074,6 +1243,8 @@ export class Game {
   /** Lethal hit: death clip, blood, shake, the knockback and the loot (grantKillRewards) at once. */
 
   private killMob(m: Mob) {
+    this.daggerStacks.delete(m);
+    this.parries.delete(m);
     m.state = 'dead';
     m.hp = 0;
     m.deadT = 0;
@@ -1889,7 +2060,7 @@ export class Game {
 
   /** `dot`: a tick of damage over time — no dodge, no crit, no counter; defense still cuts it. */
   private hurtHero(raw: number, from: THREE.Vector3, src?: Mob, dot = false) {
-    if (this.dead || this.cut) return;
+    if (this.dead || this.cut || (src && src.stun > 0 && !dot)) return;
     const s = this.stats;
     const barY = 2.45 * this.heroScale;
     const lift = this.heroBar.el.offsetHeight + 14;
@@ -1900,7 +2071,15 @@ export class Game {
     }
     const crit = !dot && !!src && Math.random() < critChance(src.def.crit);
     // GDD 10.5: reduction = defense / (defense + 100).
-    const dmg = Math.max(1, Math.round(raw * (crit ? critMul(src!.def.critDmg) : 1) * armorMul(s.defense) * this.guardMul() * (0.9 + Math.random() * 0.2)));
+    let dmg = Math.max(1, Math.round(raw * (crit ? critMul(src!.def.critDmg) : 1) * armorMul(s.defense) * this.guardMul() * (0.9 + Math.random() * 0.2)));
+    const parry = src && !dot ? this.parries.get(src) : null;
+    if (parry && parry.until >= this.time && parry.pool.left > 0) {
+      const blocked = Math.min(dmg, parry.pool.left);
+      dmg -= blocked; parry.pool.left -= blocked;
+      this.fx.spawn(v1.copy(this.hero.position).setY(barY), `Парирование −${fmtK(blocked)}`, 'dmg', 0.7, { color: '#ffdb79', lift });
+      this.particles.burst(this.hero.position.clone().setY(1.2), 0xffdc70, 10, 0.08, 5, 0.3);
+    }
+    if (dmg <= 0) return;
     if (src) this.shieldAnswer(src, dmg);
     if (src) this.fightOf(src).taken += Math.min(dmg, this.hp);
     this.hp -= dmg;
@@ -1917,6 +2096,7 @@ export class Game {
         if (m.def.boss && m.alive) this.resetBoss(m);
         else if (m.alive && this.kitOf(m)) { this.despawnMinions(m); this.kitOf(m)!.reset?.(); }
       }
+      this.resetHands();
       this.dead = true;
       this.heroMark.hittable = false;
       this.deadT = 0;
@@ -2054,6 +2234,7 @@ export class Game {
   // ---------- items / inventory ----------
   /** Gives an item to the hero; returns where it went (text for the gacha result). */
   lootItem(item: Item) {
+    if (item.kind === 'weapon' && !isPrototypeWeapon(item.def)) return 'Сейчас доступны меч, молот и кинжал';
     const color = RARITY[item.rarity].color;
     const name = itemName(item, this.faction);
     const head = v1.copy(this.hero.position).setY(2.4);
@@ -2065,6 +2246,10 @@ export class Game {
     const worn = Object.values(this.save.gear ?? {}).flatMap((g) => Object.values(g));
     const own = [...this.save.weapons, ...kits, ...Object.values(this.save.equip), ...worn, ...this.save.bag].find((x) => x && sameItem(x, item));
     if (own) {
+      if (item.kind === 'weapon' && isPrototypeWeapon(item.def)) {
+        this.ui.toast(`${name}: уровень меняется кнопками в описании`);
+        return 'Оружие уже есть';
+      }
       own.lvl += item.lvl;
       const gain = copyGain(item) * item.lvl;
       const text = `${name}: ур. ${own.lvl}${gain ? ` · +${gain} урона` : ''}`;
@@ -2157,7 +2342,19 @@ export class Game {
 
   /** Fresh chains. */
   private resetHands() {
+    this.input.reset();
+    this.attackPreview.hide();
+    this.parries.clear();
+    this.leap = null;
+    this.hero.position.y = 0;
     for (const h of this.hands) Object.assign(h, newHand(h.i));
+  }
+
+  /** Level controls cancel in-flight moves without refreshing hit-based cooldowns. */
+  weaponProgressChanged() {
+    this.resetHands();
+    this.persist();
+    this.refreshHud(true);
   }
 
   private afterGearChange() {
@@ -2331,7 +2528,7 @@ export class Game {
     let best: Item | null = null;
     let bestDps = -1;
     for (const w of Object.values(WEAPONS)) {
-      if (w.guard) continue;
+      if (!isPrototypeWeapon(w.id)) continue;
       const it = dropItem({ kind: 'weapon', def: w.id, rarity: gear.weapon });
       const dps = bosses.reduce((a, m) => a + heroDps([it, null], s.power, s.powerMul, crit, m.def.resist), 0);
       if (dps > bestDps) { best = it; bestDps = dps; }
@@ -2638,11 +2835,13 @@ interface Hand {
   i: 0 | 1; atkCd: number; impact: number; impactAt: number; combo: number; lastSwing: number;
   /** Staff: seconds until the bolt leaves the staff (< 0 = none pending), and its flight time. */
   launch: number; flight: number; yaw: number;
+  plan: AttackPlan | null; level: number; second: number;
+  parryPool: { left: number } | null; parryFocus: Mob | null;
   /** Staff: the bolt in flight and the mob it flies at. */
   bolt: Bolt | null; aim: Unit | null;
 }
 function newHand(i: 0 | 1): Hand {
-  return { i, yaw: 0, atkCd: 0, impact: -1, impactAt: 0.3, combo: 0, lastSwing: -99, launch: -1, flight: 0, bolt: null, aim: null };
+  return { i, parryPool: null, parryFocus: null, plan: null, level: 1, second: -1, yaw: 0, atkCd: 0, impact: -1, impactAt: 0.3, combo: 0, lastSwing: -99, launch: -1, flight: 0, bolt: null, aim: null };
 }
 
 /** How a blow landed: a crit, dodged, or plain (''). */

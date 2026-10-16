@@ -1,3 +1,5 @@
+import './weaponProgression.css';
+import { isPrototypeWeapon, weaponLevel, WEAPON_PROGRESS } from './weaponProgression';
 import * as THREE from 'three';
 import { Character } from './character';
 import { Creature } from './creature';
@@ -23,7 +25,7 @@ const pct1 = (x: number) => `${+(x * 100).toFixed(1)}%`;
 
 /** Stat window titles, icons and a line on how the stat works. */
 const STAT_UI: Record<StatId, { name: string; icon: string; note: string }> = {
-  power: { name: 'Урон', icon: 'hit', note: 'складывается с уроном оружия, проценты умножают сумму' },
+  power: { name: 'Урон', icon: 'hit', note: 'базовый урон 20 + бонусы персонажа; оружие умножает результат' },
   hp: { name: 'Здоровье', icon: 'heart', note: 'сумма × проценты' },
   regen: { name: 'Реген здоровья', icon: 'regen', note: 'хп/с: сумма × проценты' },
   speed: { name: 'Скорость передвижения', icon: 'run', note: `100 очков = ${HERO.baseSpeed} м/с, предел ${HERO.baseSpeed * (1 + STAT_CURVE.speed.max)} м/с` },
@@ -152,6 +154,7 @@ type Source = { at: 'bag'; index: number } | { at: 'armor'; slot: ArmorSlot } | 
 export class Inventory {
   private preview: HeroPreview | null = null;
   private opened = false;
+  private wasPaused = false;
   private bagFilter: BagFilter = 'all';
 
   constructor(private ui: UI, private game: Game) {}
@@ -167,6 +170,7 @@ export class Inventory {
     this.preview?.dispose();
     this.preview = null;
     this.opened = false;
+    this.game.paused = this.wasPaused || document.hidden;
     this.ui.close();
     this.game.refreshHud(true);
   }
@@ -232,7 +236,7 @@ export class Inventory {
     const line = (name: string, v: string) => `<div class="sd-row"><span>${name}</span><b>${v}</b></div>`;
     const sign = (n: number) => (n < 0 ? `−${fmtK(-n)}` : `+${fmtK(n)}`);
     const flat = `<div class="sd-sec"><div class="sd-top"><span>Базовое</span><b>${sign(b.sum)}</b></div>` +
-      b.flat.map(([src, v]) => line(STAT_SOURCE_NAME[src], sign(v))).join('') + '</div>';
+      b.flat.map(([src, v]) => line(src === 'weapon' && isPrototypeWeapon(g.weaponItem.def) ? 'Базовый урон персонажа' : STAT_SOURCE_NAME[src], sign(v))).join('') + '</div>';
     const pcts = isPctStat(k) && b.pct.length
       ? `<div class="sd-sec"><div class="sd-top"><span>Процент</span><b>×${b.mult.toFixed(2)}</b></div>` +
         b.pct.map(([src, v]) => line(STAT_SOURCE_NAME[src], `${sign(v)} (×${(1 + v / 100).toFixed(2)})`)).join('') + '</div>'
@@ -265,7 +269,7 @@ export class Inventory {
       `<div class="sw-row link" data-stat="${k}" data-from="list">${art(STAT_UI[k].icon, 40)}<div class="sw-name">${STAT_UI[k].name}${note ? `<small>${note}</small>` : ''}</div><b>${value}</b><span class="sw-go">›</span></div>`;
     const rows = [
       // the same total as the breakdown: (weapon + power) × percents
-      stat('power', fmtK((weaponBase(g.weaponItem) + s.power) * s.powerMul), 'вместе с оружием'),
+      stat('power', fmtK((weaponBase(g.weaponItem) + s.power) * s.powerMul), 'урон персонажа до множителя оружия'),
       stat('hp', fmtK(g.maxHp)),
       stat('regen', `${fmtK(g.regen)} хп/с`),
       stat('defense', String(g.defense), `−${pct(1 - armorMul(g.defense))} входящего урона`),
@@ -281,6 +285,8 @@ export class Inventory {
   open() {
     if (this.opened) return;
     this.opened = true;
+    this.wasPaused = this.game.paused;
+    this.game.paused = true;
     const tab = (bf: BagFilter, ic: string) => `<button class="tab ${this.bagFilter === bf ? 'on' : ''}" data-filter="${bf}">${art(ic, 34)}</button>`;
     this.ui.open(`${this.statsPanel()}
     <div class="inv-equipped"><div class="eq-title">Экипировано</div>
@@ -398,6 +404,7 @@ export class Inventory {
     const g = this.game;
     const s = g.save;
     const it = this.itemOf(src);
+    tip.classList.toggle('weapon-tip', !!it && it.kind === 'weapon' && isPrototypeWeapon(it.def));
     sfx.click();
     const x = '<button class="xbtn" data-act="close">✕</button>';
     wrap.classList.remove('hidden');
@@ -408,6 +415,10 @@ export class Inventory {
       tip.innerHTML = `<div class="card-head">${cellHtml(null, 'disabled', ph, '', 'big')}<div class="card-title"><h3>${name}</h3></div>${x}</div>
         <div class="ability well"><p>Слот пуст. Подходящие предметы лежат в сумке.</p></div>`;
       this.bindTip(tip, src);
+      return;
+    }
+    if (it.kind === 'weapon' && isPrototypeWeapon(it.def)) {
+      this.showWeaponTip(tip, src, it);
       return;
     }
     const r = RARITY[it.rarity];
@@ -481,6 +492,25 @@ export class Inventory {
     this.bindTip(tip, src);
   }
 
+  /** Five persistent rows make the next unlock visible without hiding earlier mechanics. */
+  private showWeaponTip(tip: HTMLElement, src: Source, it: Item) {
+    if (!isPrototypeWeapon(it.def)) return;
+    const p = WEAPON_PROGRESS[it.def];
+    const level = weaponLevel(it);
+    const stats = itemLines(it).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+    const rows = p.levels.map((row, i) => {
+      const unlocked = level >= i + 1;
+      return `<li class="weapon-level ${unlocked ? 'unlocked' : 'locked'} ${level === i + 1 ? 'current' : ''}"><span class="weapon-level-num">${i + 1}</span><div><strong>${row.title}</strong><small>${unlocked ? 'Открыто' : 'Заблокировано · уровень ' + (i + 1)}</small><p>${row.description}</p></div></li>`;
+    }).join('');
+    tip.innerHTML = `<div class="weapon-fixed"><div class="card-head">${cellHtml(it, 'disabled', '', '', 'big', this.game.wearer)}<div class="card-title"><h3>${itemName(it, this.game.faction)}</h3><div class="pills"><span>${p.typeName}</span><span>Уровень ${level}/5</span></div></div><button class="xbtn" data-act="close" aria-label="Закрыть описание оружия">✕</button></div>
+      <div class="card-sub weapon-stats">${stats}</div>
+      <div class="weapon-level-controls"><button class="btn" data-act="level-down" aria-label="Уменьшить уровень" ${level <= 1 ? 'disabled' : ''}>− уровень</button><strong>${level} / 5</strong><button class="btn primary" data-act="level-up" aria-label="Увеличить уровень" ${level >= 5 ? 'disabled' : ''}>+ уровень</button></div></div>
+      <div class="weapon-scroll"><p class="weapon-description">${p.description}</p><ol class="weapon-levels">${rows}</ol>
+      <div class="weapon-awakening"><button class="btn" data-act="awaken" ${level < 5 || it.awakened ? 'disabled' : ''}>${it.awakened ? '✦ Оружие пробуждено' : '✦ Пробудить оружие'}</button><small>${it.awakened ? 'Доступ к будущим синергиям открыт. Сами синергии пока не добавлены.' : 'Доступно на 5-м уровне. Открывает возможность будущих синергий.'}</small></div>
+      ${src.at === 'bag' ? '<div class="row"><button class="btn primary" data-act="equip">Экипировать</button></div>' : '<p class="weapon-equipped">Экипировано</p>'}</div>`;
+    this.bindTip(tip, src);
+  }
+
   private bindTip(tip: HTMLElement, src: Source) {
     tip.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -491,6 +521,17 @@ export class Inventory {
 
   private act(action: string, src: Source) {
     const g = this.game;
+    const it = this.itemOf(src);
+    if (it?.kind === 'weapon' && isPrototypeWeapon(it.def) && ['level-up', 'level-down', 'awaken'].includes(action)) {
+      if (action === 'awaken') { if (weaponLevel(it) === 5) it.awakened = true; }
+      else { it.lvl = weaponLevel({ lvl: weaponLevel(it) + (action === 'level-up' ? 1 : -1) }); if (it.lvl < 5) it.awakened = false; }
+      g.weaponProgressChanged();
+      g.persist();
+      g.refreshHud(true);
+      this.rerender();
+      this.showTip(src);
+      return;
+    }
     let ok = true;
     if (src.at === 'bag') {
       if (action === 'equip') g.equipFromBag(src.index);
