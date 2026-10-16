@@ -19,13 +19,12 @@
 ## Референс и прототип
 
 - [Butcher Hero: Monster Idle RPG](https://play.google.com/store/apps/details?id=com.multicastgames.butcher) — ориентир по основному игровому циклу.
-- [WorldOfWarcry — веб-прототип](https://youngwprota.github.io/WorldOfWarcry-Web/) — существующий проект, который рассматривается как основа для дальнейшей разработки.
 
 ## Статус
 
-Исходники WorldOfWarcry добавлены в [`games/warcry`](games/warcry). Это прототип на TypeScript, Three.js и Vite, работающий в браузере. TypeScript компилируется в JavaScript. Новое дерево талантов и система уникальных предметов пока остаются планами.
+Игра находится в [`games/allgames`](games/allgames). Это прототип на TypeScript, Three.js и Vite, работающий в браузере. TypeScript компилируется в JavaScript. Новое дерево талантов и система уникальных предметов пока остаются планами.
 
-Источник и сведения о переносе: [`UPSTREAM.md`](games/warcry/UPSTREAM.md).
+Источник и сведения о переносе: [`UPSTREAM.md`](games/allgames/UPSTREAM.md).
 
 ## Оружие и уровни
 
@@ -49,14 +48,14 @@
 
 [Открыть игру](https://sanchuks.github.io/ALLGAMES/) — игра запускается прямо на странице, в том числе на телефоне.
 
-GitHub Actions автоматически проверяет, собирает и публикует игру после изменений `games/warcry` в `main`. Workflow: [pages.yml](.github/workflows/pages.yml). Можно также запустить публикацию вручную: Actions → Publish game to GitHub Pages → Run workflow. Публикуется содержимое `games/warcry/dist`; путь `/ALLGAMES/` задаётся только для сборки сайта, локальная разработка работает как раньше.
+GitHub Actions автоматически проверяет, собирает и публикует игру после изменений `games/allgames` в `main`. Workflow: [pages.yml](.github/workflows/pages.yml). Можно также запустить публикацию вручную: Actions → Publish game to GitHub Pages → Run workflow. Публикуется содержимое `games/allgames/dist`; путь `/ALLGAMES/` задаётся только для сборки сайта, локальная разработка работает как раньше.
 
 ## Локальный запуск
 
 Нужны Node.js 22+ и pnpm. Для воспроизводимой установки используйте `pnpm-lock.yaml`.
 
 ```bash
-cd games/warcry
+cd games/allgames
 pnpm install --frozen-lockfile
 pnpm dev --host 127.0.0.1 --port 5173 --strictPort
 ```
@@ -78,4 +77,4 @@ pnpm sim --runs 3 --until 5       # короткая проверка симул
 3. Реализовать несколько заметно различающихся билдов через таланты и предметы.
 4. Проверить управление и производительность на телефоне.
 
-Подробное описание исходного прототипа сохранено в [`games/warcry/README.md`](games/warcry/README.md).
+Подробное описание проекта находится в [`games/allgames/README.md`](games/allgames/README.md).

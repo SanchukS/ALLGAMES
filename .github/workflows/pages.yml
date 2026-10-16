@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'games/warcry/**'
+      - 'games/allgames/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: games/warcry
+        working-directory: games/allgames
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -30,13 +30,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: games/warcry/pnpm-lock.yaml
+          cache-dependency-path: games/allgames/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm run build --base=/ALLGAMES/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: games/warcry/dist
+          path: games/allgames/dist
   deploy:
     needs: build
     runs-on: ubuntu-latest
