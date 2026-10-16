@@ -964,3 +964,10 @@ body.cutscene::before, body.cutscene::after { transform: none; }
 .ability-dot.cooldown { background: #332c33; box-shadow: none; }
 .ability-dot.locked { background: #393c46; border-color: #62646b; color: #969ba6; box-shadow: none; }
 .herohp .ability-dot { position: static; inset: auto; transform: none; display: grid; font: 800 10px system-ui; line-height: 1; text-shadow: 0 1px 2px #000; }
+
+/* Creator contact stays readable and tappable on the mobile loading screen. */
+#loading .loading-feedback { width: min(340px, 86%); margin-top: 22px; text-align: center; color: #fff2d5; font-size: 14px; line-height: 1.5; }
+#loading .loading-feedback p { margin: 0 0 8px; }
+#loading .loading-feedback a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid #ffd23f80; border-radius: 12px; color: #ffd23f; background: #160b0666; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+#loading .loading-feedback a:hover { background: #160b06aa; }
+#loading .loading-feedback a:focus-visible { outline: 3px solid #fff2d5; outline-offset: 3px; }
