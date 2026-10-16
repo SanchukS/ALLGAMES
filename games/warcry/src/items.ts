@@ -187,7 +187,7 @@ export function itemName(it: Item, f: FactionId) {
 export function itemIconId(it: Item, w?: Wearer) {
   if (it.kind === 'weapon') {
     const tier = `${it.def}_${RARITY_IDS[it.rarity]}`;
-    return hasPng(tier) ? tier : it.def === 'dagger' ? 'sword' : it.def;
+    return hasPng(tier) ? tier : it.def;
   }
   const slot = ARMOR[it.def].slot;
   if (!w) return slot;

@@ -117,7 +117,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
   },
   dagger: {
     id: 'dagger', name: 'Кинжал', type: 'slash', dmgMul: 0.6, aps: 2, shape: 'arc', arc: 80, range: 1.5,
-    anim: 'SwordAttack', model: { human: 'sword_human_knight', orc: 'sword_orc_warrior' }, icon: '🗡️', single: true,
+    anim: 'SwordAttack', model: { human: 'dagger', orc: 'dagger' }, icon: '🗡️', single: true,
   },
   axe: {
     id: 'axe', name: 'Топор', type: 'chop', dmgMul: 1.25, aps: 0.95, shape: 'arc', arc: 160, range: 2.3,

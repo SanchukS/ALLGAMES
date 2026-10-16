@@ -33,6 +33,7 @@ const pairs: [string, string, string?][] = [
   ['human_knight', 'sword_rare', 'shield_tower_rare'], ['orc_grunt', 'axe_epic', 'shield_buckler_epic'],
   ['paladin', 'hammer_legendary', 'shield_spiked_legendary'], ['soldier', 'sword_uncommon', 'shield_tower_common'],
   ['orc_warrior', 'axe_mythic', 'shield_spiked_mythic'],
+  ['human_knight', 'dagger'], ['orc_warrior', 'dagger'],
 ];
 const props = ['barrel', 'box_small_1', 'campfire', 'orc_barrel', 'undead_tomb_stone_1', 'undead_coffin', 'house_Lv1', 'orc_house_Lv1'];
 // ?models=a,b,c — gallery of arbitrary models in a grid (level-design lookup).

@@ -24,7 +24,7 @@ export const WEAPON_GRIPS: Record<string, {
   axe_orc_peon: { scale: 0.78, grip: 0.18, roll: -0.86 },
   axe: { scale: 0.78, grip: 0.18, roll: -0.86 }, // also the per-quality GLB axes (axe_<quality>)
   hammer_human_paladin: { scale: 0.75, grip: 0.16 },
-  dagger: { scale: 1.15, grip: 0.15 },
+  dagger: { scale: 0.85, grip: 0.15 },
   reaper: { scale: 1.05, grip: 0.3, tilt: 0.1, out: 0.2, left: ['SlashAdvance'] },
   // Death's own copy of reaper.fbx: keeps its look whatever happens to the hero's reaper
   death_scythe: { scale: 1.05, grip: 0.3, tilt: 0.1, out: 0.2, left: ['SlashAdvance'] },
