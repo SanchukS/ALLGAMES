@@ -930,7 +930,7 @@ export class Game {
       const m = u as Mob;
       const stacks = this.daggerStacks.get(m)?.get(it.uid) ?? 0;
       const dagger = daggerHit(stacks, level);
-      const multiplier = it.def === 'dagger' && !m.passive ? dagger.damageMultiplier + dagger.bonusMultiplier : plan.damageScale;
+      const multiplier = it.def === 'dagger' && !m.passive ? dagger.damageMultiplier : plan.damageScale;
       const hit = this.damageFor(it, m.def, multiplier);
       const wasAttacking = m.impact >= 0 || m.casting > 0 || m.animDelay >= 0;
       const before = m.hp;
@@ -946,7 +946,7 @@ export class Game {
           if (!byWeapon) { byWeapon = new Map(); this.daggerStacks.set(m, byWeapon); }
           byWeapon.set(it.uid, dagger.stacks);
           this.fx.spawn(m.pos.clone().setY(2.6), `${dagger.stacks} ст.`, 'dmg', 0.5, { color: '#ff9393' });
-          if (dagger.bonusMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
+          if (dagger.finisherMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
         }
         if (it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
         if (it.def === 'hammer' && area && m.alive) {

@@ -62,15 +62,23 @@ test('real area strike hits all in sector; charge only recharges from positive n
   g.units = []; g.prototypeStrike(h); assert.equal(charges.remaining[0], 2);
 });
 
-test('real dagger damage and stacks are per target and tenth hit applies its bonus', () => {
-  const { g, h, calls, item } = setup('dagger', 4);
-  const a = enemy(), b = enemy(); g.units = [a];
-  for (let i = 0; i < 10; i++) g.prototypeStrike(h);
-  assert.equal(g.daggerStacks.get(a).get(item.uid), 10);
-  assert.ok(Math.abs(calls[9].damage - 27.2) < 1e-6);
-  g.units = [b]; g.prototypeStrike(h);
-  assert.equal(calls[10].damage, 10);
-  assert.equal(g.daggerStacks.get(b).get(item.uid), 1);
+test('real dagger finishers replace damage only on each target’s tenth stack', () => {
+  for (const level of [4, 5]) {
+    const { g, h, calls, item } = setup('dagger', level);
+    const a = enemy(), b = enemy(); g.units = [a];
+    for (let i = 1; i <= 31; i++) {
+      g.prototypeStrike(h);
+      const expected = i % 10 === 0 ? (i / 10) * (level === 5 ? 1.5 : 1) : 1 + (i - 1) * .08;
+      assert.ok(Math.abs(calls[i - 1].damage - 10 * expected) < 1e-6, `level ${level}, stack ${i}`);
+    }
+    assert.equal(g.daggerStacks.get(a).get(item.uid), 31);
+    g.units = [b]; g.prototypeStrike(h);
+    assert.equal(calls[31].damage, 10);
+    assert.equal(g.daggerStacks.get(b).get(item.uid), 1);
+    g.units = [a]; g.prototypeStrike(h);
+    assert.equal(g.daggerStacks.get(a).get(item.uid), 32);
+    assert.ok(Math.abs(calls[32].damage - 34.8) < 1e-6);
+  }
 });
 
 test('real level-five parry shares one damage budget across enemies', () => {

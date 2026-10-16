@@ -42,14 +42,15 @@ export class AbilityCharges {
   reset() { this.remaining[0] = this.remaining[1] = 0; }
 }
 
-/** Stacks belong to one enemy. The current hit benefits from previous stacks. */
+/** Each target has its own stacks. Every tenth stack replaces normal stacking damage with the finisher. */
 export function daggerHit(stacks: number, level: number) {
-  if (level < 2) return { stacks: 0, damageMultiplier: 1, bonusMultiplier: 0 };
+  if (level < 2) return { stacks: 0, damageMultiplier: 1, finisherMultiplier: 0 };
   const previous = Math.max(0, Math.floor(stacks));
   const next = previous + 1;
+  const finisherMultiplier = level >= 4 && next % 10 === 0 ? (next / 10) * (level >= 5 ? 1.5 : 1) : 0;
   return {
     stacks: next,
-    damageMultiplier: 1 + previous * (level >= 3 ? 0.08 : 0.05),
-    bonusMultiplier: level >= 4 && next % 10 === 0 ? Math.floor(next / 10) * (level >= 5 ? 1.5 : 1) : 0,
+    damageMultiplier: finisherMultiplier || 1 + previous * (level >= 3 ? 0.08 : 0.05),
+    finisherMultiplier,
   };
 }

@@ -62,14 +62,14 @@ test('ability cooldowns require exactly three explicitly reported normal hits', 
 });
 
 test('dagger unlocks per-target stacking and triggers exactly each tenth stack', () => {
-  assert.deepEqual(daggerHit(9, 1), { stacks: 0, damageMultiplier: 1, bonusMultiplier: 0 });
-  assert.deepEqual(daggerHit(0, 2), { stacks: 1, damageMultiplier: 1, bonusMultiplier: 0 });
+  assert.deepEqual(daggerHit(9, 1), { stacks: 0, damageMultiplier: 1, finisherMultiplier: 0 });
+  assert.deepEqual(daggerHit(0, 2), { stacks: 1, damageMultiplier: 1, finisherMultiplier: 0 });
   assert.equal(daggerHit(10, 2).damageMultiplier, 1.5);
   assert.equal(daggerHit(10, 3).damageMultiplier, 1.8);
-  assert.equal(daggerHit(9, 3).bonusMultiplier, 0);
-  assert.equal(daggerHit(9, 4).bonusMultiplier, 1);
-  assert.equal(daggerHit(19, 4).bonusMultiplier, 2);
-  assert.equal(daggerHit(9, 5).bonusMultiplier, 1.5);
-  assert.equal(daggerHit(19, 5).bonusMultiplier, 3);
-  assert.equal(daggerHit(10, 5).bonusMultiplier, 0);
+  assert.equal(daggerHit(9, 3).finisherMultiplier, 0);
+  assert.equal(daggerHit(9, 4).finisherMultiplier, 1);
+  assert.equal(daggerHit(19, 4).finisherMultiplier, 2);
+  assert.equal(daggerHit(9, 5).finisherMultiplier, 1.5);
+  assert.equal(daggerHit(19, 5).finisherMultiplier, 3);
+  assert.equal(daggerHit(10, 5).finisherMultiplier, 0);
 });
