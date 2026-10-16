@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+.claude/
+.DS_Store
+AGENTS.md
+CLAUDE.md
+.sim/
+.board/
+.idea/
