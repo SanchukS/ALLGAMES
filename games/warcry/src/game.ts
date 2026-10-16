@@ -1,3 +1,4 @@
+import { AttackPreview } from './attackPreview';
 import * as THREE from 'three';
 import { Character } from './character';
 import { Trail } from './swing';
@@ -101,6 +102,7 @@ class Prop extends Unit {
 
 export class Game {
   readonly scene = new THREE.Scene();
+  private attackPreview = new AttackPreview(this.scene);
   readonly camera: THREE.PerspectiveCamera;
   world: World;
   hero: Character;
@@ -529,7 +531,7 @@ export class Game {
 
   // ---------- main loop ----------
   update(dt: number) {
-    if (this.paused) { this.render(0); return; }
+    if (this.paused) { this.input.reset(); this.attackPreview.hide(); this.render(0); return; }
     dt = Math.min(dt, 1 / 20);
     if (this.slowT > 0) { this.slowT -= dt; dt *= this.slowK; }
     this.time += dt;
@@ -633,6 +635,8 @@ export class Game {
   private updateHero(dt: number) {
     const ch = this.hero;
     if (this.dead) {
+      this.input.reset();
+      this.attackPreview.hide();
       this.deadT += dt;
       ch.update(dt, false);
       // no death window: once the death clip has played, straight back to the camp
@@ -670,39 +674,22 @@ export class Game {
     this.world.collide(p, HERO.radius);
     this.collideBlockers(p, HERO.radius);
 
-    // targeting (GDD 6.2): keep the current target while it can be struck; once it is out of the strike
-    // distance (or it is a prop and a mob came in) switch to the best unit that can. With nothing else to
-    // strike the old target is kept a bit further, only for facing. Strike distance: the longer hand.
-    const strike = this.reach();
-    const reach = strike + HERO.acquireExtra;
-    if (this.target) {
-      const t = this.target;
-      if (!t.hittable || t.pos.distanceTo(p) > reach + t.radius + 1) this.target = null;
-    }
-    const cur = this.target;
-    if (!cur || cur.passive || !this.inStrike(cur, strike)) {
-      // the nearest unit in strike distance; any fighting mob goes before props and static units
-      let best: Unit | null = null;
-      let bd = Infinity;
-      for (const u of this.units) {
-        if (!u.hittable || !this.inStrike(u, strike)) continue;
-        const score = u.pos.distanceTo(p) - u.radius + (u.passive ? 1000 : 0);
-        if (score < bd) { bd = score; best = u; }
-      }
-      // a passive unit being struck stays the target unless a fighting mob came in
-      if (best && !(cur && cur.passive && best.passive && this.inStrike(cur, strike))) this.target = best;
-    }
-
-    // facing
+    const attack = this.input.consumeAttack();
+    const yaw = this.input.aimYaw;
+    this.target = this.aimTarget(yaw, this.weapon.range, this.weapon.shape, this.weapon.arc);
     let want = ch.facing;
-    if (this.target) want = Math.atan2(this.target.pos.x - p.x, this.target.pos.z - p.z);
+    if (this.input.aiming) want = yaw;
     else if (moving) want = Math.atan2(ix, iy);
-    let diff = want - ch.facing;
-    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    const swinging = this.hands.find(h => h.impact >= 0);
+    if (swinging) want = swinging.yaw;
+    if (attack !== null) want = attack;
+    const diff = Math.atan2(Math.sin(want - ch.facing), Math.cos(want - ch.facing));
     ch.facing += diff * Math.min(1, dt * 16);
 
-    // auto attack while moving: every hand on its own timer
-    for (const h of this.hands) this.updateHand(h, dt);
+    for (const h of this.hands) this.updateHand(h, dt, this.cut ? null : attack);
+    const w = this.weapon;
+    this.attackPreview.update(p, yaw, w.range + STRIKE_PAD, w.shape === 'circle' ? 360 : w.arc,
+      !this.cut && this.input.enabled && this.input.aiming, this.hands[0].atkCd <= 0);
 
     // regen; much faster in the camp
     let rate = this.regen; // HP per second
@@ -738,15 +725,20 @@ export class Game {
     }
   }
 
-  /** Longest reach of the two hands. */
-  private reach() {
-    let r = 0;
-    for (const it of this.save.weapons) if (it) r = Math.max(r, WEAPONS[it.def].range);
-    return r;
+  /** Only targets inside the player's selected direction can receive aimed projectiles. */
+  private aimTarget(yaw: number, range: number, shape: 'arc' | 'circle', arc: number): Unit | null {
+    let target: Unit | null = null;
+    let nearest = Infinity;
+    for (const u of this.units) {
+      if (!u.hittable || !this.inShape(u.pos, u.radius, shape, arc, range, 0, yaw)) continue;
+      const d = u.pos.distanceTo(this.hero.position);
+      if (d < nearest) { nearest = d; target = u; }
+    }
+    return target;
   }
 
   /** One hand's swing timer; the blow lands `impact` s after the swing starts. */
-  private updateHand(h: Hand, dt: number) {
+  private updateHand(h: Hand, dt: number, attack: number | null) {
     const it = this.save.weapons[h.i];
     if (!it) { h.combo = 0; h.impact = -1; return; }
     const w = WEAPONS[it.def];
@@ -754,11 +746,10 @@ export class Game {
     if (w.guard || w.orb) { h.combo = 0; return; }
     h.atkCd -= dt;
     const period = 1 / w.aps;
-    // Swing only when the target is inside the strike shape (inShape's range + 0.35): the target is kept
-    // up to 1 m further for facing, and swinging there was a whiff into thin air.
-    const t = this.target;
-    const inReach = !!t && this.inStrike(t, w.range);
-    if (inReach && h.atkCd <= 0) {
+    if (attack !== null && h.atkCd <= 0) {
+      h.yaw = attack;
+      h.aim = this.aimTarget(attack, w.range, w.shape, w.arc);
+      this.hero.facing = attack;
       h.combo++;
       h.lastSwing = this.time;
       // the cast clip's release is late (1.13 s), so staves aren't capped: a cap would play it 3-5x too fast
@@ -768,7 +759,7 @@ export class Game {
       if (w.staff) {
         h.launch = impactAt;
         // capped so the hit lands before the next swing resets h.impact
-        h.flight = Math.min(t!.pos.distanceTo(this.hero.position) / STAFF_BOLT_SPEED, period * 0.5);
+        h.flight = Math.min((h.aim?.pos.distanceTo(this.hero.position) ?? w.range) / STAFF_BOLT_SPEED, period * 0.5);
       }
       if (w.shot) {
         // the bow arm points at the target, the other one draws the string
@@ -781,16 +772,19 @@ export class Game {
     }
     if (h.launch >= 0) {
       h.launch -= dt;
-      if (h.launch < 0 && w.staff && t) { h.bolt = this.spells.bolt(this.castPoint(v1), t.pos, h.flight, STAVES[w.staff].bolt); h.aim = t; }
+      if (h.launch < 0 && w.staff) {
+        const end = h.aim?.pos ?? v2.copy(this.hero.position).add(new THREE.Vector3(Math.sin(h.yaw) * w.range, 0, Math.cos(h.yaw) * w.range));
+        h.bolt = this.spells.bolt(this.castPoint(v1), end, h.flight, STAVES[w.staff].bolt);
+      }
     }
     // the mob left the staff's reach: the bolt fizzles and the hit is lost
-    if (h.bolt && h.impact >= 0 && !this.inStrike(h.aim!, w.range)) {
+    if (h.bolt && h.aim && h.impact >= 0 && !this.inStrike(h.aim, w.range)) {
       this.spells.drop(h.bolt);
       h.impact = -1;
     }
     if (h.impact >= 0) {
       h.impact -= dt;
-      if (h.impact < 0) this.heroStrike(h);
+      if (h.impact < 0) this.heroStrike(h, h.yaw, h.aim);
       if (h.impact < 0) { h.bolt = null; h.aim = null; }
     }
   }
@@ -834,11 +828,12 @@ export class Game {
     const it = this.save.weapons[h.i];
     if (!it) return 0;
     const w = WEAPONS[it.def];
-    if (w.shot) return this.shoot(it, w);
+    if (w.shot) return this.shoot(it, w, yaw, focus);
     const { shape, arc, range } = w;
     let hits = 0;
-    const only = w.single ? focus : null;
+    const only = w.single ? (focus?.hittable ? focus : this.aimTarget(yaw, range, shape, arc)) : null;
     sfx.swing();
+    if (w.single && !only) return 0;
     for (const u of this.units) {
       if (only && u !== only) continue;
       if (!u.hittable || !this.inShape(u.pos, u.radius, shape, arc, range, 0, yaw)) continue;
@@ -978,14 +973,13 @@ export class Game {
   }
 
   /** Bow: looses an arrow at the target; the damage lands when it arrives (arrowHit). Returns the number of arrows. */
-  private shoot(it: Item, w: WeaponDef) {
+  private shoot(it: Item, w: WeaponDef, yaw: number, focus: Unit | null) {
     const shot = w.shot!;
-    const u = this.target && this.target.hittable && this.inStrike(this.target, w.range) ? this.target : null;
-    if (!u) return 0;
+    const u = focus?.hittable && this.inShape(focus.pos, focus.radius, w.shape, w.arc, w.range, 0, yaw) ? focus : null;
     sfx.swing();
-    const yaw = this.hero.facing;
     const from = v1.copy(this.hero.position).add(v2.set(Math.sin(yaw) * 0.6, 1.35, Math.cos(yaw) * 0.6));
-    this.arrows.fire(shot.arrow[this.faction], from, u, shot.speed, () => this.arrowHit(u, it));
+    const target = u ?? { pos: this.hero.position.clone().add(new THREE.Vector3(Math.sin(yaw) * w.range, 0, Math.cos(yaw) * w.range)), radius: 0, hittable: false };
+    this.arrows.fire(shot.arrow[this.faction], from, target, shot.speed, () => { if (u) this.arrowHit(u, it); });
     return 1;
   }
 
@@ -2643,12 +2637,12 @@ function turn(cur: number, want: number, k: number) {
 interface Hand {
   i: 0 | 1; atkCd: number; impact: number; impactAt: number; combo: number; lastSwing: number;
   /** Staff: seconds until the bolt leaves the staff (< 0 = none pending), and its flight time. */
-  launch: number; flight: number;
+  launch: number; flight: number; yaw: number;
   /** Staff: the bolt in flight and the mob it flies at. */
   bolt: Bolt | null; aim: Unit | null;
 }
 function newHand(i: 0 | 1): Hand {
-  return { i, atkCd: 0, impact: -1, impactAt: 0.3, combo: 0, lastSwing: -99, launch: -1, flight: 0, bolt: null, aim: null };
+  return { i, yaw: 0, atkCd: 0, impact: -1, impactAt: 0.3, combo: 0, lastSwing: -99, launch: -1, flight: 0, bolt: null, aim: null };
 }
 
 /** How a blow landed: a crit, dodged, or plain (''). */

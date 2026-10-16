@@ -1,6 +1,6 @@
 /**
- * Floating virtual stick (Butcher Hero style): touch/click anywhere on the play area,
- * drag to move; the stick base appears under the finger. WASD/arrows on desktop.
+ * Floating movement stick plus an independent, fixed attack stick.
+ * Drag the attack stick to aim; release outside its dead zone to strike. WASD/arrows move on desktop.
  */
 export class Input {
   x = 0; // -1..1, screen right
@@ -12,7 +12,35 @@ export class Input {
   private base: HTMLDivElement;
   private knob: HTMLDivElement;
   private radius = 60;
-  enabled = true;
+  private active = true;
+  private attackId: number | null = null;
+  private attackButton: HTMLButtonElement;
+  private attackKnob: HTMLSpanElement;
+  private attackOrigin = [0, 0];
+  private pendingAttack: number | null = null;
+  aiming = false;
+  aimYaw = 0;
+
+  get enabled() { return this.active; }
+  set enabled(value: boolean) {
+    this.active = value;
+    this.attackButton.hidden = !value;
+    if (!value) this.reset();
+  }
+
+  /** Each release is consumed once; returning to the centre cancels the shot. */
+  consumeAttack(): number | null {
+    const yaw = this.enabled ? this.pendingAttack : null;
+    this.pendingAttack = null;
+    return yaw;
+  }
+
+  private cancelAim() {
+    this.attackId = null;
+    this.aiming = false;
+    this.attackKnob.style.transform = 'translate(-50%, -50%)';
+    this.attackButton.classList.remove('aiming');
+  }
 
   constructor(area: HTMLElement) {
     this.base = document.createElement('div');
@@ -21,6 +49,43 @@ export class Input {
     this.knob.className = 'stick-knob';
     this.base.appendChild(this.knob);
     area.appendChild(this.base);
+    this.attackButton = document.createElement('button');
+    this.attackButton.className = 'attack-stick ui-block';
+    this.attackButton.setAttribute('aria-label', 'Атака: потяни для прицеливания, отпусти для удара');
+    this.attackButton.innerHTML = '<span class="attack-knob">⚔</span><span class="attack-caption">АТАКА</span>';
+    this.attackKnob = this.attackButton.querySelector('.attack-knob')!;
+    area.appendChild(this.attackButton);
+    const aim = (e: PointerEvent) => {
+      const dx = e.clientX - this.attackOrigin[0], dy = e.clientY - this.attackOrigin[1];
+      const len = Math.hypot(dx, dy), scale = Math.min(1, 46 / Math.max(1, len));
+      this.aiming = len >= 10;
+      if (this.aiming) this.aimYaw = Math.atan2(dx, dy);
+      this.attackButton.classList.toggle('aiming', this.aiming);
+      this.attackKnob.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
+    };
+    this.attackButton.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (!this.enabled || this.attackId !== null || e.button !== 0) return;
+      this.attackId = e.pointerId;
+      const r = this.attackButton.getBoundingClientRect();
+      this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
+      this.attackButton.setPointerCapture(e.pointerId);
+      aim(e);
+      e.preventDefault();
+    });
+    this.attackButton.addEventListener('pointermove', e => {
+      if (e.pointerId === this.attackId) aim(e);
+    });
+    this.attackButton.addEventListener('pointerup', e => {
+      if (e.pointerId !== this.attackId) return;
+      aim(e);
+      if (this.enabled && this.aiming) this.pendingAttack = this.aimYaw;
+      this.cancelAim();
+    });
+    for (const type of ['pointercancel', 'lostpointercapture']) {
+      this.attackButton.addEventListener(type, () => this.cancelAim());
+    }
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
 
     area.addEventListener('pointerdown', (e) => {
       if (!this.enabled || this.pointerId !== null) return;
@@ -69,7 +134,7 @@ export class Input {
 
     addEventListener('keydown', (e) => this.keys.add(e.code));
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => this.reset());
   }
 
   /** Movement vector in screen space, length 0..1. */
@@ -95,6 +160,8 @@ export class Input {
 
   reset() {
     this.pointerId = null;
+    this.pendingAttack = null;
+    this.cancelAim();
     this.x = this.y = 0;
     this.keys.clear();
     this.base.classList.remove('on');

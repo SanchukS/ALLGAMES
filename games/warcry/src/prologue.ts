@@ -1,3 +1,4 @@
+import { AttackPreview } from './attackPreview';
 // Prologue (GDD 3.1 / 11.1): the new player wakes up as an undead spirit before the Lich King,
 // gets a short lore talk and the quest "put three skeletons to rest", turns it in and is offered
 // a new life with one of the living races "for services to the undead".
@@ -78,9 +79,10 @@ export class Prologue {
   private kills = 0;
   readonly gains: Gains = { power: 0, hp: 0, regen: 0, speed: 0 };
   private hp: number = HERO.hp;
+  private preview = new AttackPreview(this.scene);
+  private strikeYaw = 0;
   private atkCd = 0;
   private impact = -1;
-  private target: Skeleton | null = null;
   private ghostT = -1; // >= 0 while the spirit is dissolved and re-forming at the Lich
   private camPos = new THREE.Vector3();
   private camLook = new THREE.Vector3();
@@ -154,6 +156,7 @@ export class Prologue {
     // Opening shot: high above the Lich, then the camera dollies in to the waking spirit.
     this.camPos.set(0, 22, 18);
     this.camLook.copy(LICH).setY(1);
+    this.preview.hide();
     this.input.enabled = false;
     this.cine.classList.add('on');
     sfx.telegraph();
@@ -309,8 +312,8 @@ export class Prologue {
     sfx.levelUp();
     document.getElementById('pro-stats')!.classList.add('show');
     this.renderQuest();
-    this.hint('Тяни палец по экрану (или WASD), чтобы идти', 4000);
-    setTimeout(() => this.stage === 'hunt' && this.kills === 0 && this.hint('Подойди к скелету — ты атакуешь сам', 4000), 4500);
+    this.hint('Тяни слева (или WASD), чтобы идти', 4000);
+    setTimeout(() => this.stage === 'hunt' && this.kills === 0 && this.hint('Тяни красный джойстик, чтобы целиться. Отпусти — удар!', 4000), 4500);
   }
 
   private questDone() {
@@ -322,6 +325,7 @@ export class Prologue {
 
   private turnInTalk() {
     this.stage = 'talk';
+    this.preview.hide();
     this.input.enabled = false;
     this.input.reset();
     this.cine.classList.add('on');
@@ -354,6 +358,8 @@ export class Prologue {
   }
 
   dispose() {
+    this.preview.dispose();
+    this.input.reset();
     this.layer.remove();
     this.hud.remove();
     this.cine.remove();
@@ -457,6 +463,8 @@ export class Prologue {
     if (this.ghostT >= 0) {
       // The spirit cannot die (GDD 10.7): it scatters and re-forms at the Lich King.
       this.ghostT += dt;
+      this.preview.hide();
+      this.input.reset();
       ch.update(dt, false);
       if (this.ghostT > 1.4) {
         this.ghostT = -1;
@@ -479,24 +487,19 @@ export class Prologue {
     }
     this.collide(p, HERO.radius);
 
-    // auto-attack: keep the current target while it lives and stays near (GDD 6.2)
-    const reach = GHOST.range + HERO.acquireExtra;
-    if (this.target && (this.target.state === 'dead' || this.target.ch.position.distanceTo(p) > reach + 1.5)) this.target = null;
-    if (!this.target) {
-      let bd = Infinity;
-      for (const s of this.skeletons) {
-        if (s.state === 'dead') continue;
-        const d = s.ch.position.distanceTo(p) - SKEL.radius;
-        if (d < reach && d < bd) { bd = d; this.target = s; }
-      }
-    }
+    const attack = this.input.consumeAttack();
     let want = ch.facing;
-    if (this.target) want = Math.atan2(this.target.ch.position.x - p.x, this.target.ch.position.z - p.z);
+    if (this.input.aiming) want = this.input.aimYaw;
     else if (moving) want = Math.atan2(ix, iy);
+    if (this.impact >= 0) want = this.strikeYaw;
     ch.facing = turn(ch.facing, want, dt * 16);
     this.atkCd -= dt;
+    this.preview.update(p, this.input.aimYaw, GHOST.range + 0.35, GHOST.arc,
+      this.input.enabled && this.input.aiming, this.atkCd <= 0);
     const period = 1 / GHOST.aps;
-    if (this.target && this.atkCd <= 0) {
+    if (attack !== null && this.atkCd <= 0) {
+      this.strikeYaw = attack;
+      ch.facing = attack;
       const impactAt = Math.min(0.42, period * 0.4);
       ch.attack('SwordAttack', period, impactAt);
       this.impact = impactAt;
@@ -520,7 +523,7 @@ export class Prologue {
       const dz = s.ch.position.z - p.z;
       const d = Math.hypot(dx, dz);
       if (d - SKEL.radius > GHOST.range + 0.35) continue;
-      const a = Math.atan2(Math.sin(Math.atan2(dx, dz) - this.hero.facing), Math.cos(Math.atan2(dx, dz) - this.hero.facing));
+      const a = Math.atan2(Math.sin(Math.atan2(dx, dz) - this.strikeYaw), Math.cos(Math.atan2(dx, dz) - this.strikeYaw));
       if (d > 0.6 && Math.abs(a) > THREE.MathUtils.degToRad(GHOST.arc / 2) + Math.atan2(SKEL.radius, d)) continue;
       const dmg = Math.round((GHOST.dmg + this.power) * (0.9 + Math.random() * 0.2));
       s.hp -= dmg;
@@ -540,7 +543,6 @@ export class Prologue {
     s.deadT = 0;
     s.ch.die();
     s.el.classList.remove('show');
-    if (this.target === s) this.target = null;
     const at = s.ch.position;
     for (const [k, n] of Object.entries(MOBS.skeleton_warrior.reward) as [OrbKind, number][]) for (let i = 0; i < n; i++) this.pickups.spawn(at, k);
     // The freed soul rises
@@ -564,7 +566,6 @@ export class Prologue {
     if (this.hp > 0) return;
     this.hp = 0;
     this.ghostT = 0;
-    this.target = null;
     this.hero.root.visible = false;
     this.particles.burst(v1.copy(this.hero.position).setY(1), 0x9fe8ff, 22, 0.12, 6, 1);
     sfx.die();

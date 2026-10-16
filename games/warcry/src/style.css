@@ -948,3 +948,10 @@ body::before, body::after { content: ''; position: fixed; left: 0; right: 0; hei
 body::before { top: 0; transform: translateY(-100%); }
 body::after { bottom: 0; transform: translateY(100%); }
 body.cutscene::before, body.cutscene::after { transform: none; }
+
+/* Independent right-hand attack stick; pointer capture supports moving with a second finger. */
+.attack-stick { position: absolute; right: 76px; bottom: max(150px, 21%); width: 94px; height: 94px; border-radius: 50%; border: 3px solid #ffbcac; background: #9e333b88; box-shadow: 0 3px 15px #0006; z-index: 6; touch-action: none; padding: 0; }
+.attack-stick[hidden], body.cutscene .attack-stick { display: none; }
+.attack-stick.aiming { border-color: white; background: #d8434688; }
+.attack-knob { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: #f16b64; border: 2px solid #ffe0cc; font-size: 26px; pointer-events: none; }
+.attack-caption { position: absolute; top: 100%; left: 0; width: 100%; margin-top: 7px; font-size: 11px; letter-spacing: 1px; text-shadow: 0 1px 3px black; pointer-events: none; }
