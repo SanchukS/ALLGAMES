@@ -10,17 +10,17 @@ test('fast sweep crosses angle wrap and uses arc midpoint, not release aim', () 
   arc(g, 150, 295, 0);
   const shot = g.snapshot(250);
   assert.equal(shot.sweepCount, 1);
-  assert.ok(Math.abs(shot.sweepYaw - rad(-137.5)) < 1e-6);
+  assert.ok(Math.abs(shot.sweepYaw - rad(-110)) < 1e-6);
   assert.equal(shot.heldSeconds, .25);
 });
 test('reverse arc produces double slash in same region', () => {
   const g = new AttackGestureTracker(); g.begin(0);
   arc(g, -72.5, 72.5, 0); arc(g, 72.5, -72.5, 250);
   assert.equal(g.snapshot(500).sweepCount, 2);
-  assert.ok(Math.abs(g.snapshot(500).sweepYaw) < 1e-6);
+  assert.ok(Math.abs(g.snapshot(500).sweepYaw - rad(-27.5)) < 1e-6);
 });
-test('slow aim and arcs below 145 degrees do not count as sweeps', () => {
-  for (const [angle, duration] of [[145, 1800], [45, 250], [144, 250]]) {
+test('slow aim and arcs below 90 degrees do not count as sweeps', () => {
+  for (const [angle, duration] of [[90, 1800], [45, 250], [89, 250]]) {
     const g = new AttackGestureTracker(); g.begin(0); arc(g, 0, angle, 0, duration);
     assert.equal(g.snapshot(duration).sweepCount, 0);
   }
@@ -70,21 +70,21 @@ test('expired leap attempt can rearm within the same held gesture', () => {
   assert.equal(g.snapshot(270).sweepCount, 0);
 });
 
-test('only the final 145 degrees matter, even after long aiming or a full turn', () => {
+test('only the final 90 degrees matter, even after long aiming or a full turn', () => {
   const g = new AttackGestureTracker(); g.begin(0);
   arc(g, 0, -80, 0, 1500);
   arc(g, -80, 280, 2000, 500);
   const shot = g.snapshot(2500);
   assert.equal(shot.sweepCount, 1);
-  assert.ok(Math.abs(shot.sweepYaw - rad(-152.5)) < 1e-6);
+  assert.ok(Math.abs(shot.sweepYaw - rad(-125)) < 1e-6);
 });
 
 test('release window includes time spent holding still after the arc', () => {
   const g = new AttackGestureTracker(); g.begin(0);
-  arc(g, 0, 145, 0, 600);
-  g.sample(rad(145), 1, 650);
+  arc(g, 0, 90, 0, 600);
+  g.sample(rad(90), 1, 650);
   assert.equal(g.snapshot(650).sweepCount, 1);
-  g.sample(rad(145), 1, 651);
+  g.sample(rad(90), 1, 651);
   assert.equal(g.snapshot(651).sweepCount, 0);
 });
 
@@ -122,10 +122,21 @@ test('comfortable double arc works with tiny reversals inside both legs', () => 
   assert.equal(g.snapshot(1050).sweepCount, 2);
 });
 
-test('double slash retains the turning point when final 145 degrees fit the release window', () => {
+test('double slash retains the turning point when final 90 degrees fit the release window', () => {
   const g = new AttackGestureTracker(); g.begin(0);
   for (let i = 0; i <= 60; i++) g.sample(rad(-80 + 160 * i / 60), 1, i * 10);
   for (let i = 0; i <= 60; i++) g.sample(rad(80 - 160 * i / 60), 1, 600 + i * 10);
   g.sample(rad(-80), 1, 1280);
   assert.equal(g.snapshot(1280).sweepCount, 2);
+});
+
+
+test('exactly 90 degrees triggers single and double slashes in either direction', () => {
+  for (const direction of [-1, 1]) {
+    const g = new AttackGestureTracker(); g.begin(0);
+    arc(g, 0, 90 * direction, 0);
+    assert.equal(g.snapshot(250).sweepCount, 1);
+    arc(g, 90 * direction, 0, 250);
+    assert.equal(g.snapshot(500).sweepCount, 2);
+  }
 });
