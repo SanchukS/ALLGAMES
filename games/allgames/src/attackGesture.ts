@@ -9,7 +9,7 @@ export interface AttackGesture {
   aimed: boolean;
 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-export const SWORD_SWEEP = { angle: 90 * Math.PI / 180, windowMs: 650, releaseGraceMs: 160, jitter: 4 * Math.PI / 180 };
+export const SWORD_SWEEP = { angle: 90 * Math.PI / 180, windowMs: 1000, releaseGraceMs: 160, jitter: 4 * Math.PI / 180 };
 const QUICK_MS = 650; // Hammer gesture remains independent of release.
 const DEAD_ZONE = 10 / 46;
 type Sample = { yaw: number; time: number };

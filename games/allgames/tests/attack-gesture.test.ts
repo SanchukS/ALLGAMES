@@ -81,11 +81,11 @@ test('only the final 90 degrees matter, even after long aiming or a full turn', 
 
 test('release window includes time spent holding still after the arc', () => {
   const g = new AttackGestureTracker(); g.begin(0);
-  arc(g, 0, 90, 0, 600);
-  g.sample(rad(90), 1, 650);
-  assert.equal(g.snapshot(650).sweepCount, 1);
-  g.sample(rad(90), 1, 651);
-  assert.equal(g.snapshot(651).sweepCount, 0);
+  arc(g, 0, 90, 0, 950);
+  g.sample(rad(90), 1, 1000);
+  assert.equal(g.snapshot(1000).sweepCount, 1);
+  g.sample(rad(90), 1, 1001);
+  assert.equal(g.snapshot(1001).sweepCount, 0);
 });
 
 test('a large discontinuous pointer jump is not a slash', () => {
@@ -139,4 +139,13 @@ test('exactly 90 degrees triggers single and double slashes in either direction'
     arc(g, 90 * direction, 0, 250);
     assert.equal(g.snapshot(500).sweepCount, 2);
   }
+});
+
+
+test('single and double ninety-degree arcs can each take 900 ms', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  arc(g, -45, 45, 0, 900);
+  assert.equal(g.snapshot(980).sweepCount, 1);
+  arc(g, 45, -45, 900, 900);
+  assert.equal(g.snapshot(1880).sweepCount, 2);
 });
