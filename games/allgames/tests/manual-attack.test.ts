@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import * as THREE from 'three';
 import { Input } from '../src/input';
 import { AttackPreview } from '../src/attackPreview';
+import { planWeaponAttack } from '../src/weaponAbilities';
 
 // Minimal DOM doubles: test pointer state without requiring a browser installation.
 class Element extends EventTarget {
@@ -108,4 +109,36 @@ test('off-centre touch-down cannot prime a hammer leap or an attack direction', 
   assert.equal(shot.leap, false);
   assert.equal(shot.sweepCount, 0);
   assert.equal(shot.aimed, true);
+});
+
+
+test('real joystick input queues single and double sweeps at 30/60/120 Hz', (t) => {
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  for (const hz of [30, 60, 120]) {
+    for (const double of [false, true]) {
+      const { input, attack } = setup();
+      now = 0;
+      pointer(attack, 'pointerdown', 1, 50, 50);
+      let x = 50, y = 50;
+      const leg = (from: number, to: number, start: number) => {
+        const count = hz / 2;
+        for (let i = 0; i <= count; i++) {
+          now = start + 500 * i / count;
+          const angle = (from + (to - from) * i / count + (i % 2 ? 1 : -1)) * Math.PI / 180;
+          x = 50 + Math.sin(angle) * 46; y = 50 + Math.cos(angle) * 46;
+          pointer(attack, 'pointermove', 1, x, y);
+          assert.equal(input.consumeAttackGesture(), null);
+        }
+      };
+      leg(-80, 80, 0);
+      if (double) leg(80, -80, 500);
+      now += 80;
+      pointer(attack, 'pointerup', 1, x, y);
+      const gesture = input.consumeAttackGesture()!;
+      assert.equal(gesture.sweepCount, double ? 2 : 1, `${hz} Hz, double=${double}`);
+      assert.equal(planWeaponAttack('sword', 3, gesture, true, true)?.kind, double ? 'doubleSweep' : 'sweep');
+      assert.equal(input.consumeAttackGesture(), null);
+    }
+  }
 });

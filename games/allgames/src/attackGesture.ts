@@ -9,7 +9,7 @@ export interface AttackGesture {
   aimed: boolean;
 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-export const SWORD_SWEEP = { angle: 145 * Math.PI / 180, windowMs: 350 };
+export const SWORD_SWEEP = { angle: 145 * Math.PI / 180, windowMs: 650, releaseGraceMs: 160, jitter: 4 * Math.PI / 180 };
 const QUICK_MS = 650; // Hammer gesture remains independent of release.
 const DEAD_ZONE = 10 / 46;
 type Sample = { yaw: number; time: number };
@@ -58,29 +58,42 @@ export class AttackGestureTracker {
     while (this.samples.length > 2 && this.samples[1].time < now - SWORD_SWEEP.windowMs * 2) this.samples.shift();
   }
 
-  /** Walk backwards from release (or a turn), stopping at the first reversal. */
+  /** Reverse scan with angular hysteresis: tiny tremors are not deliberate turns. */
   private endingArc(end: number, releasedAt: number) {
     const finish = this.samples[end];
     let direction = 0;
     let crossing: Sample | null = null;
     let boundary = end;
+    let extreme = finish.yaw;
+    let extremeIndex = end;
+    let movedAt: number | null = null;
     for (let i = end - 1; i >= 0; i--) {
       const a = this.samples[i], b = this.samples[i + 1];
       const delta = b.yaw - a.yaw;
-      if (Math.abs(delta) > 1e-6) {
-        const sign = Math.sign(delta);
-        if (direction && direction !== sign) break;
-        direction = sign;
+      if (movedAt === null && Math.abs(finish.yaw - a.yaw) > SWORD_SWEEP.jitter) movedAt = b.time;
+      if (!direction && Math.abs(finish.yaw - a.yaw) > SWORD_SWEEP.jitter) {
+        direction = Math.sign(finish.yaw - a.yaw);
+      }
+      if (direction) {
+        if ((a.yaw - extreme) * direction > SWORD_SWEEP.jitter + 1e-6) {
+          boundary = extremeIndex;
+          break;
+        }
+        if ((a.yaw - extreme) * direction < 0) {
+          extreme = a.yaw;
+          extremeIndex = i;
+        }
       }
       boundary = i;
-      if (!crossing && Math.abs(finish.yaw - a.yaw) >= SWORD_SWEEP.angle - 1e-6) {
+      if (!crossing && direction && (finish.yaw - a.yaw) * direction >= SWORD_SWEEP.angle - 1e-6) {
         const yaw = finish.yaw - direction * SWORD_SWEEP.angle;
         const t = Math.abs(delta) > 1e-6 ? Math.max(0, Math.min(1, (yaw - a.yaw) / delta)) : 0;
         crossing = { yaw, time: a.time + (b.time - a.time) * t };
       }
       if (releasedAt - a.time > SWORD_SWEEP.windowMs) break;
     }
-    if (!crossing || releasedAt - crossing.time > SWORD_SWEEP.windowMs) return null;
+    if (!crossing || releasedAt - crossing.time > SWORD_SWEEP.windowMs
+      || movedAt === null || releasedAt - movedAt > SWORD_SWEEP.releaseGraceMs) return null;
     return { yaw: wrap((crossing.yaw + finish.yaw) / 2), direction, boundary };
   }
 

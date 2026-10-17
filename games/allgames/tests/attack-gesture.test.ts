@@ -81,11 +81,11 @@ test('only the final 145 degrees matter, even after long aiming or a full turn',
 
 test('release window includes time spent holding still after the arc', () => {
   const g = new AttackGestureTracker(); g.begin(0);
-  arc(g, 0, 145, 0, 250);
-  g.sample(rad(145), 1, 350);
-  assert.equal(g.snapshot(350).sweepCount, 1);
-  g.sample(rad(145), 1, 351);
-  assert.equal(g.snapshot(351).sweepCount, 0);
+  arc(g, 0, 145, 0, 600);
+  g.sample(rad(145), 1, 650);
+  assert.equal(g.snapshot(650).sweepCount, 1);
+  g.sample(rad(145), 1, 651);
+  assert.equal(g.snapshot(651).sweepCount, 0);
 });
 
 test('a large discontinuous pointer jump is not a slash', () => {
@@ -99,4 +99,25 @@ test('hammer leap remains armed while aiming after its gesture', () => {
   g.sample(Math.PI, 1, 0); g.sample(0, 1, 200);
   g.sample(rad(45), .8, 3000);
   assert.equal(g.snapshot(4000).leap, true);
+});
+
+test('comfortable 500 ms arc with 80 ms release delay is accepted', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  arc(g, 0, 150, 0, 500);
+  g.sample(rad(150), 1, 580);
+  assert.equal(g.snapshot(580).sweepCount, 1);
+});
+
+test('two-degree finger jitter does not cancel a completed arc', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  arc(g, 0, 150, 0, 250);
+  g.sample(rad(148), 1, 270);
+  assert.equal(g.snapshot(280).sweepCount, 1);
+});
+
+test('comfortable double arc works with tiny reversals inside both legs', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  for (let i = 0; i <= 100; i++) g.sample(rad(-80 + 1.6 * i + (i % 2 ? 1.2 : -1.2)), 1, i * 5);
+  for (let i = 0; i <= 100; i++) g.sample(rad(80 - 1.6 * i + (i % 2 ? 1.2 : -1.2)), 1, 500 + i * 5);
+  assert.equal(g.snapshot(1050).sweepCount, 2);
 });
