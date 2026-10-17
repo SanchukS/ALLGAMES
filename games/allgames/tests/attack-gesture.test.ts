@@ -121,3 +121,11 @@ test('comfortable double arc works with tiny reversals inside both legs', () => 
   for (let i = 0; i <= 100; i++) g.sample(rad(80 - 1.6 * i + (i % 2 ? 1.2 : -1.2)), 1, 500 + i * 5);
   assert.equal(g.snapshot(1050).sweepCount, 2);
 });
+
+test('double slash retains the turning point when final 145 degrees fit the release window', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  for (let i = 0; i <= 60; i++) g.sample(rad(-80 + 160 * i / 60), 1, i * 10);
+  for (let i = 0; i <= 60; i++) g.sample(rad(80 - 160 * i / 60), 1, 600 + i * 10);
+  g.sample(rad(-80), 1, 1280);
+  assert.equal(g.snapshot(1280).sweepCount, 2);
+});

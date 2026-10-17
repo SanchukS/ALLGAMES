@@ -64,6 +64,7 @@ export class AttackGestureTracker {
     let direction = 0;
     let crossing: Sample | null = null;
     let boundary = end;
+    let turned = false;
     let extreme = finish.yaw;
     let extremeIndex = end;
     let movedAt: number | null = null;
@@ -77,6 +78,7 @@ export class AttackGestureTracker {
       if (direction) {
         if ((a.yaw - extreme) * direction > SWORD_SWEEP.jitter + 1e-6) {
           boundary = extremeIndex;
+          turned = true;
           break;
         }
         if ((a.yaw - extreme) * direction < 0) {
@@ -90,11 +92,14 @@ export class AttackGestureTracker {
         const t = Math.abs(delta) > 1e-6 ? Math.max(0, Math.min(1, (yaw - a.yaw) / delta)) : 0;
         crossing = { yaw, time: a.time + (b.time - a.time) * t };
       }
-      if (releasedAt - a.time > SWORD_SWEEP.windowMs) break;
+      // A qualifying suffix can start after the actual turn. Keep looking for that
+      // turn briefly instead of inventing a boundary at the release-window edge.
+      if (releasedAt - a.time > SWORD_SWEEP.windowMs + SWORD_SWEEP.releaseGraceMs
+        || (!crossing && releasedAt - a.time > SWORD_SWEEP.windowMs)) break;
     }
     if (!crossing || releasedAt - crossing.time > SWORD_SWEEP.windowMs
       || movedAt === null || releasedAt - movedAt > SWORD_SWEEP.releaseGraceMs) return null;
-    return { yaw: wrap((crossing.yaw + finish.yaw) / 2), direction, boundary };
+    return { yaw: wrap((crossing.yaw + finish.yaw) / 2), direction, boundary, turned };
   }
 
   snapshot(now: number): AttackGesture {
@@ -105,7 +110,7 @@ export class AttackGestureTracker {
       if (last) {
         sweepCount = 1;
         sweepYaw = last.yaw;
-        if (last.boundary > 0) {
+        if (last.turned && last.boundary > 0) {
           const first = this.endingArc(last.boundary, this.samples[last.boundary].time);
           if (first && first.direction !== last.direction && Math.abs(wrap(first.yaw - last.yaw)) < Math.PI / 4) sweepCount = 2;
         }
