@@ -93,3 +93,19 @@ test('sector matches weapon range and facing and hides when aiming ends', () => 
   preview.dispose();
   assert.equal(scene.children.length, 0);
 });
+
+
+test('off-centre touch-down cannot prime a hammer leap or an attack direction', () => {
+  const { area, input, attack } = setup();
+  pointer(area, 'pointerdown', 1, 20, 20);
+  pointer(area, 'pointermove', 1, 20, 70); // Moving down.
+  pointer(attack, 'pointerdown', 2, 50, 15); // Accidental touch above attack centre.
+  assert.equal(input.aiming, false);
+  assert.equal(input.attackGesture?.aimed, false);
+  pointer(attack, 'pointermove', 2, 50, 95);
+  pointer(attack, 'pointerup', 2, 50, 95);
+  const shot = input.consumeAttackGesture()!;
+  assert.equal(shot.leap, false);
+  assert.equal(shot.sweepCount, 0);
+  assert.equal(shot.aimed, true);
+});

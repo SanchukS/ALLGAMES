@@ -88,7 +88,7 @@ export class Input {
       const r = this.attackButton.getBoundingClientRect();
       this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
       this.attackButton.setPointerCapture(e.pointerId);
-      aim(e);
+      this.aiming = false; // Touch-down position is not deliberate joystick motion.
       e.preventDefault();
     });
     this.attackButton.addEventListener('pointermove', e => {

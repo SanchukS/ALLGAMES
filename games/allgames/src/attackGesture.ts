@@ -9,12 +9,12 @@ export interface AttackGesture {
   aimed: boolean;
 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-const MIN_ARC = Math.PI / 2;
-const MAX_ARC = Math.PI + 0.12;
-const QUICK_MS = 650;
+export const SWORD_SWEEP = { angle: 145 * Math.PI / 180, windowMs: 350 };
+const QUICK_MS = 650; // Hammer gesture remains independent of release.
 const DEAD_ZONE = 10 / 46;
+type Sample = { yaw: number; time: number };
 
-/** Pure, timestamp-driven recognition; no timers, DOM or weapon-specific rules. */
+/** Pure, timestamp-driven recognition; no timers or DOM. */
 export class AttackGestureTracker {
   private start = 0;
   private yaw = 0;
@@ -22,38 +22,25 @@ export class AttackGestureTracker {
   private movementYaw: number | null = null;
   private backwardsAt: number | null = null;
   private leap = false;
-  private lastYaw: number | null = null;
-  private segmentStart = 0;
-  private segmentTime = 0;
-  private segmentEnd = 0;
-  private direction = 0;
-  private reversalDistance = 0;
-  private firstArc: { yaw: number; direction: number } | null = null;
-  private rejected = false;
+  private samples: Sample[] = [];
 
   begin(now: number, movementYaw: number | null = null) {
     this.reset();
     this.start = now;
-    this.segmentTime = now;
     this.movementYaw = movementYaw;
   }
 
   reset() {
-    this.start = this.yaw = this.distance = this.segmentStart = this.segmentEnd = this.segmentTime = this.direction = 0;
-    this.movementYaw = this.backwardsAt = this.lastYaw = null;
-    this.firstArc = null;
-    this.leap = this.rejected = false;
-    this.reversalDistance = 0;
+    this.start = this.yaw = this.distance = 0;
+    this.movementYaw = this.backwardsAt = null;
+    this.leap = false;
+    this.samples = [];
   }
 
   sample(yaw: number, distance: number, now: number) {
     this.distance = Math.max(0, Math.min(1, distance));
     if (this.distance < DEAD_ZONE) {
-      // Passing through the centre must not be mistaken for a 180-degree arc.
-      this.lastYaw = null;
-      this.direction = 0;
-      this.reversalDistance = 0;
-      this.firstArc = null;
+      this.samples = []; // A crossing through the centre is not a circular gesture.
       return;
     }
     this.yaw = yaw;
@@ -62,61 +49,53 @@ export class AttackGestureTracker {
       if (relative > Math.PI * 0.75 && (this.backwardsAt === null || now - this.backwardsAt > QUICK_MS)) this.backwardsAt = now;
       if (this.backwardsAt !== null && now - this.backwardsAt <= QUICK_MS && relative < Math.PI / 4) this.leap = true;
     }
-    if (this.lastYaw === null) {
-      this.segmentStart = this.segmentEnd = yaw;
-      this.segmentTime = now;
-      this.lastYaw = yaw;
-      return;
-    }
-    const delta = wrap(yaw - this.lastYaw);
-    this.lastYaw = yaw;
-    if (this.rejected) return;
-    if (now - this.segmentTime > QUICK_MS) {
-      this.segmentStart = this.segmentEnd = yaw;
-      this.segmentTime = now;
-      this.direction = 0;
-      this.reversalDistance = 0;
-      this.firstArc = null;
-      return;
-    }
-    // Accumulate reversal distance instead of depending on pointer event frequency.
-    const direction = Math.sign(delta);
-    if (this.direction && direction && direction !== this.direction) this.reversalDistance += Math.abs(delta);
-    else if (direction === this.direction) this.reversalDistance = Math.max(0, this.reversalDistance - Math.abs(delta));
-    if (this.direction !== 0 && this.reversalDistance > 0.07) {
-      const turningPoint = this.segmentEnd + delta - direction * this.reversalDistance;
-      const arc = Math.abs(turningPoint - this.segmentStart);
-      if (!this.firstArc && arc >= MIN_ARC - 1e-6 && arc <= MAX_ARC) {
-        this.firstArc = { yaw: (this.segmentStart + turningPoint) / 2, direction: this.direction };
-      } else if (this.firstArc) {
-        this.rejected = true; // More than one reversal is not a double slash.
+    const last = this.samples.at(-1);
+    const delta = last ? wrap(yaw - last.yaw) : 0;
+    // An undersampled jump across the stick cannot prove a continuous arc.
+    if (Math.abs(delta) >= Math.PI * 0.75) this.samples = [];
+    this.samples.push({ yaw: this.samples.length && last ? last.yaw + delta : yaw, time: now });
+    // Keep enough history for two quick arcs, plus one interpolation anchor.
+    while (this.samples.length > 2 && this.samples[1].time < now - SWORD_SWEEP.windowMs * 2) this.samples.shift();
+  }
+
+  /** Walk backwards from release (or a turn), stopping at the first reversal. */
+  private endingArc(end: number, releasedAt: number) {
+    const finish = this.samples[end];
+    let direction = 0;
+    let crossing: Sample | null = null;
+    let boundary = end;
+    for (let i = end - 1; i >= 0; i--) {
+      const a = this.samples[i], b = this.samples[i + 1];
+      const delta = b.yaw - a.yaw;
+      if (Math.abs(delta) > 1e-6) {
+        const sign = Math.sign(delta);
+        if (direction && direction !== sign) break;
+        direction = sign;
       }
-      this.segmentStart = turningPoint;
-      this.segmentTime = now;
-      this.direction = direction;
-      this.reversalDistance = 0;
+      boundary = i;
+      if (!crossing && Math.abs(finish.yaw - a.yaw) >= SWORD_SWEEP.angle - 1e-6) {
+        const yaw = finish.yaw - direction * SWORD_SWEEP.angle;
+        const t = Math.abs(delta) > 1e-6 ? Math.max(0, Math.min(1, (yaw - a.yaw) / delta)) : 0;
+        crossing = { yaw, time: a.time + (b.time - a.time) * t };
+      }
+      if (releasedAt - a.time > SWORD_SWEEP.windowMs) break;
     }
-    this.segmentEnd += delta;
-    if (this.direction === 0 && Math.abs(this.segmentEnd - this.segmentStart) > 0.045) {
-      this.direction = Math.sign(this.segmentEnd - this.segmentStart);
-    }
-    if (Math.abs(this.segmentEnd - this.segmentStart) > MAX_ARC) this.rejected = true;
+    if (!crossing || releasedAt - crossing.time > SWORD_SWEEP.windowMs) return null;
+    return { yaw: wrap((crossing.yaw + finish.yaw) / 2), direction, boundary };
   }
 
   snapshot(now: number): AttackGesture {
     let sweepCount: 0 | 1 | 2 = 0;
     let sweepYaw = this.yaw;
-    if (!this.rejected && this.distance >= DEAD_ZONE && now - this.segmentTime <= QUICK_MS) {
-      const arc = Math.abs(this.segmentEnd - this.segmentStart);
-      const valid = arc >= MIN_ARC - 1e-6 && arc <= MAX_ARC;
-      if (this.firstArc) {
-        sweepYaw = wrap(this.firstArc.yaw);
+    if (this.distance >= DEAD_ZONE && this.samples.length > 1) {
+      const last = this.endingArc(this.samples.length - 1, now);
+      if (last) {
         sweepCount = 1;
-        const secondMid = (this.segmentStart + this.segmentEnd) / 2;
-        if (valid && this.direction !== this.firstArc.direction && Math.abs(wrap(secondMid - sweepYaw)) < Math.PI / 4) sweepCount = 2;
-      } else if (valid) {
-        sweepCount = 1;
-        sweepYaw = wrap((this.segmentStart + this.segmentEnd) / 2);
+        sweepYaw = last.yaw;
+        if (last.boundary > 0) {
+          const first = this.endingArc(last.boundary, this.samples[last.boundary].time);
+          if (first && first.direction !== last.direction && Math.abs(wrap(first.yaw - last.yaw)) < Math.PI / 4) sweepCount = 2;
+        }
       }
     }
     return { yaw: this.yaw, heldSeconds: Math.max(0, (now - this.start) / 1000), sweepCount, sweepYaw,
