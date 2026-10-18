@@ -51,6 +51,10 @@ const labels = document.getElementById('labels')!;
 /** Glow, grade and vignette over the game view (src/post.ts); null on low graphics. */
 let post: Post | null = new Post(renderer);
 
+const rotationRequired = matchMedia('(orientation: portrait) and (pointer: coarse)');
+const hasFinePointer = matchMedia('(any-pointer: fine)');
+const pausedForRotation = () => rotationRequired.matches && !hasFinePointer.matches;
+
 let viewportWidth = 0;
 let viewportHeight = 0;
 function resize() {
@@ -204,7 +208,7 @@ function prologue() {
     p.camera.aspect = app.clientWidth / app.clientHeight;
     p.camera.updateProjectionMatrix();
     p.viewH = renderer.domElement.height;
-    if (app.clientWidth >= app.clientHeight) p.update(dt);
+    if (!pausedForRotation()) p.update(dt);
     if (post) post.render(p.scene, p.camera);
     else renderer.render(p.scene, p.camera);
   });
@@ -294,7 +298,7 @@ function run() {
     const { w, h } = { w: app.clientWidth, h: app.clientHeight };
     if (game.camera.aspect !== w / h) { game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); resize(); }
     game.viewH = renderer.domElement.height;
-    if (w >= h) game.update(dt);
+    if (!pausedForRotation()) game.update(dt);
     if (game.offscreen) return;
     if (post) post.render(game.scene, game.camera);
     else renderer.render(game.scene, game.camera);

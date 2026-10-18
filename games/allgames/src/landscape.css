@@ -10,7 +10,7 @@
 #app { inset: 0; transform: none; width: 100%; height: 100%; max-width: none; }
 #hud, #pro-hud, #modal { inset: 0; width: 100%; height: 100%; transform: none; }
 #rotate { display: none; }
-@media (orientation: portrait) {
+@media (orientation: portrait) and (pointer: coarse) and (any-pointer: coarse) {
   #rotate { display: flex; font-size: 22px; }
   #rotate .ic { animation: landscape-hint 1.6s ease-in-out infinite; }
 }
@@ -226,3 +226,14 @@
 .attack-area.aiming .attack-marker { opacity: 1; }
 .attack-area .attack-caption { top: auto; bottom: 12px; margin: 0; font-size: 10px; opacity: .65; }
 @media (max-width: 620px) { #equipbar { width: 30%; } }
+
+/* A tall desktop window is playable; only touch-only devices require rotation. */
+@media (any-pointer: fine) { #rotate { display: none; } }
+@media (orientation: portrait) and (any-pointer: fine) {
+  #modal.show:has(.sheet.inv) { grid-template-columns: 1fr; grid-template-rows: auto minmax(180px, .8fr) minmax(200px, 1fr); overflow-y: auto; }
+  #modal > .top-stats { flex-wrap: wrap; }
+  #i-tip .tip.weapon-tip { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  #i-tip .weapon-tip .weapon-fixed { max-height: 42vh; }
+  .g-body { grid-template-columns: 1fr; align-content: start; }
+  .g-banner { grid-row: auto; }
+}
