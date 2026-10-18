@@ -256,3 +256,21 @@ test('secondary weapon performs a real hit without starting the primary weapon',
   assert.equal(calls.length, 1);
   assert.equal(h.combo, 0);
 });
+
+
+test('all prototype weapons animate the attacking hand instead of a right-handed clip', () => {
+  for (const def of ['sword', 'dagger', 'hammer']) {
+    for (const hand of [0, 1]) {
+      const { g, h, item } = setup(def, 1);
+      g.save.weapons[hand] = item;
+      h.i = hand;
+      const swings: any[] = [];
+      g.hero.swing = (...args: any[]) => swings.push(args);
+      g.hero.attack = () => assert.fail('Right-handed clip must not play for prototype weapons');
+      g.updateHand(h, .01, { yaw: 0, heldSeconds: .1, sweepCount: 0, sweepYaw: 0, leap: false, distance: 1, aimed: true });
+      assert.equal(swings.length, 1, def);
+      assert.equal(swings[0][1], hand, def);
+      assert.equal(swings[0][3], h.impactAt, 'animation and damage share the impact time');
+    }
+  }
+});
