@@ -1,3 +1,4 @@
+import { CONTROL_LAYOUT_KEY, ControlLayoutEditor, fitControl, parseControlLayout, type ControlLayout } from './controlLayout';
 import { AttackGestureTracker, type AttackGesture } from './attackGesture';
 type AttackSlot = 0 | 1;
 type AttackControl = {
@@ -32,6 +33,10 @@ export class Input {
   private radiusSetting = 90;
   private actualRadius = 90;
   private area: HTMLElement;
+  private layout: ControlLayout | null = null;
+  private layoutEditor: ControlLayoutEditor | null = null;
+  get editingLayout() { return this.layoutEditor !== null; }
+
   private lastMovementYaw: number | null = null;
 
   get holdingAttack() { return this.attackState(0).holdingAttack; }
@@ -66,9 +71,10 @@ export class Input {
     if (el.textContent !== status) el.textContent = status;
   }
 
-  get enabled() { return this.active; }
+  get enabled() { return this.active && !this.editingLayout; }
   set enabled(value: boolean) {
     this.active = value;
+    this.base.hidden = !value;
     for (const a of this.attacks) a.button.hidden = !value || a.label === null;
     if (!value) this.reset();
   }
@@ -99,6 +105,10 @@ export class Input {
   setAttackRadius(radius: number) {
     if (!Number.isFinite(radius)) return;
     this.radiusSetting = Math.max(56, Math.min(160, Math.round(radius)));
+    if (this.layout) {
+      this.layout[1].radius = this.layout[2].radius = this.radiusSetting;
+      this.storeLayout();
+    }
     this.reset();
     this.fitAttackArea();
     try { localStorage.setItem('allgames-attack-radius', String(this.radiusSetting)); } catch { /* optional preference */ }
@@ -106,6 +116,20 @@ export class Input {
 
   private fitAttackArea() {
     const r = this.area.getBoundingClientRect();
+    if (this.layout) {
+      this.attacks.forEach((a, i) => {
+        const p = fitControl(this.layout![i + 1], r.width, r.height);
+        a.button.style.left = `${p.x - p.radius}px`; a.button.style.top = `${p.y - p.radius}px`;
+        a.button.style.right = a.button.style.bottom = 'auto';
+        a.button.style.width = a.button.style.height = `${p.radius * 2}px`;
+        if (i === 0) this.actualRadius = p.radius;
+      });
+      const p = fitControl(this.layout[0], r.width, r.height);
+      this.base.classList.add('control-layout-fixed');
+      this.base.style.left = `${p.x}px`; this.base.style.top = `${p.y}px`;
+      this.base.style.width = this.base.style.height = `${p.radius * 2}px`;
+      return;
+    }
     const count = Math.max(1, this.attacks.filter(a => a.label !== null).length);
     // Reserve the bottom equipment row and top HUD; both disks fit in the right half.
     const widthLimit = (r.width / 2 - 36 - (count - 1) * 12) / (count * 2);
@@ -191,6 +215,7 @@ export class Input {
       const saved = Number(localStorage.getItem('allgames-attack-radius'));
       if (saved >= 56 && saved <= 160) this.radiusSetting = saved;
     } catch { /* optional preference */ }
+    try { this.layout = parseControlLayout(localStorage.getItem(CONTROL_LAYOUT_KEY)); } catch { /* optional preference */ }
     this.fitAttackArea();
     addEventListener('resize', () => { this.reset(); this.fitAttackArea(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
@@ -199,11 +224,12 @@ export class Input {
       if (!this.enabled || this.pointerId !== null) return;
       if ((e.target as HTMLElement).closest('.ui-block, #modal, button')) return;
       const r = area.getBoundingClientRect();
-      if (e.clientX - r.left >= r.width / 2) return;
+      const fixed = this.layout ? fitControl(this.layout[0], r.width, r.height) : null;
+      if (fixed ? Math.hypot(e.clientX - r.left - fixed.x, e.clientY - r.top - fixed.y) > fixed.radius : e.clientX - r.left >= r.width / 2) return;
       this.pointerId = e.pointerId;
-      this.ox = e.clientX - r.left;
-      this.oy = e.clientY - r.top;
-      this.radius = Math.max(56, Math.min(r.width, r.height) * 0.16);
+      this.ox = fixed?.x ?? e.clientX - r.left;
+      this.oy = fixed?.y ?? e.clientY - r.top;
+      this.radius = fixed?.radius ?? Math.max(56, Math.min(r.width, r.height) * 0.16);
       this.base.style.width = this.base.style.height = `${this.radius * 2}px`;
       this.base.style.left = `${this.ox}px`;
       this.base.style.top = `${this.oy}px`;
@@ -237,6 +263,7 @@ export class Input {
       this.pointerId = null;
       this.x = this.y = 0;
       this.base.classList.remove('on');
+      this.knob.style.transform = 'translate(-50%, -50%)';
     };
     area.addEventListener('pointerup', end);
     area.addEventListener('pointercancel', end);
@@ -244,6 +271,30 @@ export class Input {
     addEventListener('keydown', (e) => this.keys.add(e.code));
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.reset());
+  }
+
+  private storeLayout() {
+    if (!this.layout) return;
+    try { localStorage.setItem(CONTROL_LAYOUT_KEY, JSON.stringify(this.layout)); } catch { /* browser storage may be unavailable */ }
+  }
+
+  editLayout(onDone: () => void) {
+    if (this.editingLayout) return;
+    this.reset();
+    const rect = this.area.getBoundingClientRect();
+    const width = Math.max(1, rect.width), height = Math.max(1, rect.height);
+    const radius = Math.min(this.radiusSetting, Math.max(36, (width / 2 - 48) / 4), Math.max(36, (height - 160) / 2));
+    const initial: ControlLayout = this.layout ?? [
+      { x: Math.min(110, width / 4) / width, y: (height - 110) / height, radius: Math.max(56, Math.min(width, height) * .16) },
+      { x: (width - 18 - radius) / width, y: (height - 76 - radius) / height, radius },
+      { x: (width - 30 - radius * 3) / width, y: (height - 76 - radius) / height, radius },
+    ];
+    this.layoutEditor = new ControlLayoutEditor(this.area, initial, ['Движение', `1 · ${this.attacks[0].label ?? 'Оружие'}`, `2 · ${this.attacks[1].label ?? 'Оружие'}`], result => {
+      this.layoutEditor = null;
+      if (result) { this.layout = result; this.storeLayout(); }
+      this.reset(); this.fitAttackArea();
+      onDone();
+    });
   }
 
   /** Movement vector in screen space, length 0..1. */
@@ -276,5 +327,6 @@ export class Input {
     this.x = this.y = 0;
     this.keys.clear();
     this.base.classList.remove('on');
+    this.knob.style.transform = 'translate(-50%, -50%)';
   }
 }

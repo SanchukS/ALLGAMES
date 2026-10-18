@@ -537,22 +537,42 @@ export class UI {
     this.modal.querySelector(sel)?.addEventListener('click', () => { sfx.click(); fn(); });
   }
 
-  settings(muted: boolean, lowGfx: boolean, toggleMute: () => void, toggleGfx: () => void, reset: () => void, close: () => void, showLog: () => void) {
-    this.open(`<div class="panel"><h2>Настройки</h2>
+  settings(muted: boolean, lowGfx: boolean, toggleMute: () => void, toggleGfx: () => void, reset: () => void, close: () => void, showLog: () => void, preferences: () => void) {
+    this.open(`<div class="panel"><h2>Меню</h2>
       <p>Управление: движение — слева или WASD. Справа два круга — по одному на оружие. Веди палец по нужному кругу, чтобы целиться; отпусти для удара. Верни палец в центр, чтобы отменить прицеливание и жест. Играй в горизонтальной ориентации.</p>
+      <div class="row"><button class="btn primary" id="m-preferences">Настройки</button></div>
       <div class="row"><button class="btn" id="m-mute">${muted ? '🔇 Звук выкл' : '🔊 Звук вкл'}</button>
       <button class="btn" id="m-gfx">${lowGfx ? '🖥 Графика: низкая' : '🖥 Графика: высокая'}</button></div>
       <div class="row"><button class="btn purple" id="m-debug">🛠 Дебаг-меню</button></div>
       <div class="row"><button class="btn" id="m-log">📊 Лог баланса</button><button class="btn danger" id="m-reset">Сбросить прогресс</button></div>
       <div class="row"><button class="btn primary" id="m-close">Продолжить</button></div></div>`);
+    this.on('#m-preferences', preferences);
     this.on('#m-debug', () => { this.close(); close(); this.onDebug(); });
-    this.on('#m-mute', () => { toggleMute(); this.close(); this.settings(!muted, lowGfx, toggleMute, toggleGfx, reset, close, showLog); });
-    this.on('#m-gfx', () => { toggleGfx(); this.close(); this.settings(muted, !lowGfx, toggleMute, toggleGfx, reset, close, showLog); });
+    this.on('#m-mute', () => { toggleMute(); this.close(); this.settings(!muted, lowGfx, toggleMute, toggleGfx, reset, close, showLog, preferences); });
+    this.on('#m-gfx', () => { toggleGfx(); this.close(); this.settings(muted, !lowGfx, toggleMute, toggleGfx, reset, close, showLog, preferences); });
     this.on('#m-reset', () => {
-      this.confirm('Сбросить весь прогресс?', 'Герой, фракция и снаряжение будут удалены.', reset, () => this.settings(muted, lowGfx, toggleMute, toggleGfx, reset, close, showLog));
+      this.confirm('Сбросить весь прогресс?', 'Герой, фракция и снаряжение будут удалены.', reset, () => this.settings(muted, lowGfx, toggleMute, toggleGfx, reset, close, showLog, preferences));
     });
     this.on('#m-log', () => { this.close(); showLog(); });
     this.on('#m-close', () => { this.close(); close(); });
+  }
+
+  preferences(volume: number, muted: boolean, changeVolume: (value: number) => void, joysticks: () => void, back: () => void) {
+    this.open(`<div class="panel"><h2>Настройки</h2>
+      <label for="sound-volume">Громкость звуков: <output id="sound-value">${Math.round(volume * 100)}%</output></label>
+      <input id="sound-volume" aria-label="Громкость звуков" type="range" min="0" max="100" step="1" value="${Math.round(volume * 100)}" style="width:100%;min-height:44px;touch-action:pan-x">
+      <p id="sound-muted">${muted ? 'Звук выключен в меню. Изменение громкости включит его.' : '0% — без звука'}</p>
+      <div class="row"><button class="btn primary" id="control-layout">Настройки джойстиков</button></div>
+      <div class="row"><button class="btn" id="settings-back">Назад</button></div></div>`);
+    const slider = this.modal.querySelector<HTMLInputElement>('#sound-volume')!;
+    slider.addEventListener('input', () => {
+      changeVolume(Number(slider.value) / 100);
+      this.modal.querySelector('#sound-value')!.textContent = `${slider.value}%`;
+      this.modal.querySelector('#sound-muted')!.textContent = '0% — без звука';
+    });
+    slider.addEventListener('change', () => sfx.click());
+    this.on('#control-layout', joysticks);
+    this.on('#settings-back', back);
   }
 
   /** Balance playtest report (src/balancelog.ts): read here, copy to paste into chat. */

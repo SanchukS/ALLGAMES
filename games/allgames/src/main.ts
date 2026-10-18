@@ -4,8 +4,9 @@ import '@fontsource/rubik/800.css';
 import '@fontsource/rubik/900.css';
 import * as THREE from 'three';
 import './grade';
+import './controlLayout.css';
 import { assets } from './assets';
-import { setMuted, sfx, unlockAudio } from './audio';
+import { getVolume, setVolume, setMuted, sfx, unlockAudio } from './audio';
 import { Character } from './character';
 import { FACTIONS, FORGE3D, MOBS, ORBS, PETS, WEAPONS, type FactionId, type OrbKind } from './config';
 import { GEAR_MODELS } from './items';
@@ -172,6 +173,12 @@ function startGame(faction: FactionId, fresh: boolean, gains?: Gains) {
     if (!game) return;
     game.paused = true;
     input.reset();
+    const preferences = () => ui.preferences(getVolume(), save!.muted, value => {
+      setVolume(value); save!.muted = false; setMuted(false); game?.persist();
+    }, () => {
+      ui.close();
+      input.editLayout(preferences);
+    }, open);
     ui.settings(save!.muted, !!save!.lowGfx, () => { save!.muted = !save!.muted; setMuted(save!.muted); game?.persist(); }, () => {
       save!.lowGfx = !save!.lowGfx;
       applyGfx(!!save!.lowGfx);
@@ -182,7 +189,7 @@ function startGame(faction: FactionId, fresh: boolean, gains?: Gains) {
       wipeAll();
       clearLog();
       location.reload();
-    }, () => { if (game) game.paused = false; }, () => ui.balanceLog(report(), open));
+    }, () => { if (game) game.paused = false; }, () => ui.balanceLog(report(), open), preferences);
   };
   if (fresh) {
     ui.flash();
@@ -309,7 +316,7 @@ function run() {
 document.addEventListener('visibilitychange', () => {
   if (!game) return;
   if (document.hidden) { game.paused = true; game.persist(); input.reset(); }
-  else if (!ui.modalOpen) game.paused = false;
+  else if (!ui.modalOpen && !input.editingLayout) game.paused = false;
 });
 addEventListener('pointerdown', unlockAudio, { once: true });
 

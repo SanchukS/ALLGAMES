@@ -1,0 +1,17 @@
+.control-layout-editor { position: absolute; inset: 0; z-index: 90; background: #0b102b9c; touch-action: none; color: #fff; }
+.control-layout-toolbar { position: absolute; inset: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) auto max(8px, env(safe-area-inset-left)); z-index: 3; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 10px; border: 1px solid #8299b9; border-radius: 14px; background: #172238f5; font-size: 13px; }
+.control-layout-toolbar b { font-size: 16px; }
+.control-layout-help { flex-basis: 100%; text-align: center; order: 2; font-size: 12px; }
+.control-layout-toolbar label { display: flex; align-items: center; gap: 7px; }
+.control-layout-toolbar input { width: 120px; accent-color: #9bd9ff; }
+.control-layout-toolbar output { width: 40px; }
+.control-layout-toolbar .btn { min-height: 36px; padding: 6px 14px; font-size: 14px; }
+.control-layout-circle { position: absolute; transform: translate(-50%, -50%); border: 3px solid #89d4ff; border-radius: 50%; background: #2572a34d; display: flex; align-items: center; justify-content: center; padding: 22px; font-size: 14px; text-align: center; cursor: grab; touch-action: none; user-select: none; }
+.control-layout-circle-0 { border-color: #9ff0b2; background: #286f464d; }
+.control-layout-circle-2 { border-color: #ce9fff; background: #773c9c4d; }
+.control-layout-circle.selected { box-shadow: 0 0 0 3px #fff7, 0 0 25px #fff3; }
+.control-layout-circle span { pointer-events: none; }
+.control-layout-handle { position: absolute; right: -8px; top: calc(50% - 18px); width: 36px; height: 36px; padding: 0; border: 2px solid white; border-radius: 50%; color: white; background: #253d5b; font-size: 22px; touch-action: none; cursor: ew-resize; }
+.stick-base.control-layout-fixed { display: block; opacity: .45; }
+.stick-base.control-layout-fixed.on { opacity: 1; }
+@media (max-height: 380px) { .control-layout-help { display: none; } .control-layout-toolbar { gap: 6px; padding: 6px; } .control-layout-toolbar b { font-size: 13px; } }

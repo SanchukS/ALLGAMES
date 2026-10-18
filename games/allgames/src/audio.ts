@@ -3,13 +3,25 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
 export let muted = false;
+let volume = 1;
+try {
+  const saved = localStorage.getItem('allgames-sound-volume');
+  if (saved !== null && Number.isFinite(Number(saved))) volume = Math.max(0, Math.min(1, Number(saved)));
+} catch { /* Storage is optional. */ }
+export const getVolume = () => volume;
+export function setVolume(value: number) {
+  if (!Number.isFinite(value)) return;
+  volume = Math.max(0, Math.min(1, value));
+  if (master) master.gain.value = muted ? 0 : 0.35 * volume;
+  try { localStorage.setItem('allgames-sound-volume', String(volume)); } catch { /* Storage is optional. */ }
+}
 const lastPlay = new Map<string, number>();
 
 export function unlockAudio() {
   if (ctx) { if (ctx.state === 'suspended') void ctx.resume(); return; }
   ctx = new AudioContext();
   master = ctx.createGain();
-  master.gain.value = 0.35;
+  master.gain.value = muted ? 0 : 0.35 * volume;
   master.connect(ctx.destination);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
@@ -18,7 +30,7 @@ export function unlockAudio() {
 
 export function setMuted(m: boolean) {
   muted = m;
-  if (master) master.gain.value = m ? 0 : 0.35;
+  if (master) master.gain.value = m ? 0 : 0.35 * volume;
 }
 
 function tone(freq: number, dur: number, type: OscillatorType, vol: number, slide = 0, delay = 0) {
