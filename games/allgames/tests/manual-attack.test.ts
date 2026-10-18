@@ -180,3 +180,80 @@ test('centre resets charge while holding, and radius/resize cancel pending shots
   pointer(attack, 'pointerup', 2, 95, 50);
   assert.equal(input.consumeAttackGesture(), null);
 });
+
+test('empty weapon circle cannot aim or queue attacks', () => {
+  const { input, area } = setup();
+  const second = area.children[2];
+  assert.equal(second.hidden, true);
+  pointer(second, 'pointerdown', 2, 50, 50);
+  pointer(second, 'pointermove', 2, 95, 50);
+  pointer(second, 'pointerup', 2, 95, 50);
+  assert.equal(input.attackState(1).holdingAttack, false);
+  assert.equal(input.consumeAttackGesture(1), null);
+});
+
+test('two weapon circles hold and release independently without crossfire', () => {
+  const { input, area, attack } = setup();
+  const second = area.children[2];
+  input.setAttackWeapon(1, 'Молот');
+  assert.equal(second.hidden, false);
+  pointer(attack, 'pointerdown', 1, 50, 50);
+  pointer(second, 'pointerdown', 2, 50, 50);
+  pointer(attack, 'pointermove', 1, 95, 50);
+  pointer(second, 'pointermove', 2, 50, 5);
+  assert.equal(input.attackState(0).aimYaw, Math.PI / 2);
+  assert.equal(input.attackState(1).aimYaw, Math.PI);
+  pointer(attack, 'pointerup', 1, 95, 50);
+  assert.equal(input.consumeAttackGesture(0)?.yaw, Math.PI / 2);
+  assert.equal(input.consumeAttackGesture(1), null);
+  assert.equal(input.attackState(1).holdingAttack, true);
+  pointer(second, 'pointerup', 2, 50, 5);
+  assert.equal(input.consumeAttackGesture(1)?.yaw, Math.PI);
+  assert.equal(input.consumeAttackGesture(0), null);
+});
+
+test('centring or disabling one weapon preserves the other pending attack', () => {
+  for (const cancel of ['centre', 'empty', 'pointercancel']) {
+    const { input, area, attack } = setup();
+    const second = area.children[2];
+    input.setAttackWeapon(1, 'Молот');
+    pointer(attack, 'pointerdown', 1, 50, 50);
+    pointer(second, 'pointerdown', 2, 50, 50);
+    pointer(attack, 'pointermove', 1, 95, 50);
+    pointer(second, 'pointermove', 2, 50, 5);
+    pointer(attack, 'pointerup', 1, 95, 50);
+    if (cancel === 'empty') input.setAttackWeapon(1, null);
+    else if (cancel === 'pointercancel') pointer(second, 'pointercancel', 2, 50, 5);
+    else pointer(second, 'pointermove', 2, 50, 50);
+    pointer(second, 'pointerup', 2, 50, 50);
+    assert.equal(input.consumeAttackGesture(1), null, cancel);
+    assert.equal(input.consumeAttackGesture(0)?.yaw, Math.PI / 2, cancel);
+  }
+});
+
+test('repeated weapon refresh preserves gesture; global reset clears both circles', () => {
+  const { input, area, attack } = setup();
+  const second = area.children[2];
+  input.setAttackWeapon(1, 'Молот');
+  pointer(second, 'pointerdown', 2, 50, 50);
+  pointer(second, 'pointermove', 2, 50, 5);
+  input.setAttackWeapon(1, 'Молот');
+  input.setAttackStatus(1, 'I: 3 · II: ✓');
+  assert.equal(input.attackState(1).aiming, true);
+  pointer(attack, 'pointerdown', 1, 50, 50);
+  pointer(attack, 'pointermove', 1, 95, 50);
+  pointer(attack, 'pointerup', 1, 95, 50);
+  input.reset();
+  pointer(second, 'pointerup', 2, 50, 5);
+  assert.equal(input.consumeAttackGesture(0), null);
+  assert.equal(input.consumeAttackGesture(1), null);
+});
+
+test('one pointer cannot capture both weapon circles', () => {
+  const { input, area, attack } = setup();
+  input.setAttackWeapon(1, 'Кинжал');
+  pointer(attack, 'pointerdown', 7, 50, 50);
+  pointer(area.children[2], 'pointerdown', 7, 50, 50);
+  assert.equal(input.attackState(0).holdingAttack, true);
+  assert.equal(input.attackState(1).holdingAttack, false);
+});

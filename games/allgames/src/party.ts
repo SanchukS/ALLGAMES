@@ -1,7 +1,7 @@
 /**
  * The party: three heroes of different classes, one of them on the field at a time.
- * Each class has two gear slots: a weapon (save.weapons[0]) and its own class item (save.weapons[1]: the warrior's
- * shield, the hunter's pet, the mage's orb); each keeps its own pair (SaveData.kits).
+ * Each class has two gear slots: the warrior uses two independent attack weapons;
+ * the hunter and mage use a weapon and their pet/orb. Each keeps its own pair (SaveData.kits).
  */
 import { RARITY_IDS, type FactionId } from './config';
 import type { VisualPart } from './items';
@@ -44,7 +44,7 @@ export interface ClassDef {
 export const CLASSES: Record<HeroClass, ClassDef> = {
   warrior: {
     name: 'Воин', icon: 'shield', color: ['#ff7a6a', '#c0352c'], key: 'Digit1',
-    weapons: ['sword', 'hammer', 'dagger'], off: [], offName: 'Щит',
+    weapons: ['sword', 'hammer', 'dagger'], off: [], offName: 'Оружие 2',
   },
   hunter: {
     name: 'Охотник', icon: 'bow', color: ['#8fe05a', '#3f9a2c'], key: 'Digit2',
@@ -68,6 +68,11 @@ export const kitOf = (c: HeroClass): HeroClass => (CLASSES[c].weapons.length ? c
 export function classSlot(c: HeroClass, def: string): 0 | 1 | null {
   const k = CLASSES[kitOf(c)];
   return k.weapons.includes(def) ? 0 : k.off.includes(def) ? 1 : null;
+}
+
+/** Warriors can equip either melee weapon in either attack slot. Other classes retain their class item. */
+export function classAcceptsSlot(c: HeroClass, def: string, slot: 0 | 1): boolean {
+  return c === 'warrior' ? CLASSES.warrior.weapons.includes(def) : classSlot(c, def) === slot;
 }
 
 /** The class whose lists hold weapon def `def` (null: nobody's). */

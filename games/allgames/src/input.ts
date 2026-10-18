@@ -1,11 +1,25 @@
 import { AttackGestureTracker, type AttackGesture } from './attackGesture';
-/**
- * Left-side floating movement stick plus an independent circular aiming area.
- * Drag the attack stick to aim; release outside its dead zone to strike. WASD/arrows move on desktop.
- */
+type AttackSlot = 0 | 1;
+type AttackControl = {
+  pointerId: number | null;
+  button: HTMLButtonElement;
+  marker: HTMLSpanElement;
+  caption: HTMLSpanElement;
+  status: HTMLSpanElement;
+  origin: [number, number];
+  range: number;
+  moved: boolean;
+  label: string | null;
+  pending: AttackGesture | null;
+  tracker: AttackGestureTracker;
+  aiming: boolean;
+  yaw: number;
+};
+
+/** Left-side movement and two independent weapon aiming disks. */
 export class Input {
-  x = 0; // -1..1, screen right
-  y = 0; // -1..1, screen down
+  x = 0;
+  y = 0;
   private pointerId: number | null = null;
   private ox = 0;
   private oy = 0;
@@ -14,51 +28,69 @@ export class Input {
   private knob: HTMLDivElement;
   private radius = 60;
   private active = true;
-  private attackId: number | null = null;
-  private attackButton: HTMLButtonElement;
-  private attackKnob: HTMLSpanElement;
-  private attackOrigin = [0, 0];
-  private attackRange = 90;
+  private attacks: AttackControl[] = [];
   private radiusSetting = 90;
   private actualRadius = 90;
-  private attackMoved = false;
   private area: HTMLElement;
-  private pendingGesture: AttackGesture | null = null;
-  private gesture = new AttackGestureTracker();
   private lastMovementYaw: number | null = null;
 
-  get holdingAttack() { return this.attackId !== null; }
-  get attackGesture(): AttackGesture | null {
-    return this.holdingAttack ? this.gesture.snapshot(performance.now()) : null;
+  get holdingAttack() { return this.attackState(0).holdingAttack; }
+  get attackGesture() { return this.attackState(0).gesture; }
+  get aiming() { return this.attacks[0].aiming; }
+  get aimYaw() { return this.attacks[0].yaw; }
+
+  attackState(slot: AttackSlot) {
+    const a = this.attacks[slot];
+    return {
+      aiming: a.aiming,
+      aimYaw: a.yaw,
+      holdingAttack: a.pointerId !== null,
+      gesture: a.pointerId !== null ? a.tracker.snapshot(performance.now()) : null,
+    };
   }
-  aiming = false;
-  aimYaw = 0;
+
+  setAttackWeapon(slot: AttackSlot, label: string | null) {
+    const a = this.attacks[slot];
+    if (a.label === label) return;
+    a.label = label;
+    a.pending = null;
+    this.cancelAim(a);
+    a.caption.textContent = label ? `${slot + 1} · ${label}` : '';
+    a.button.setAttribute('aria-label', label ? `${label}, оружие ${slot + 1}: веди пальцем для прицеливания, отпусти для удара; центр отменяет атаку` : 'Пустой слот оружия');
+    a.button.hidden = !this.active || label === null;
+    this.fitAttackArea();
+  }
+
+  setAttackStatus(slot: AttackSlot, status: string) {
+    const el = this.attacks[slot].status;
+    if (el.textContent !== status) el.textContent = status;
+  }
 
   get enabled() { return this.active; }
   set enabled(value: boolean) {
     this.active = value;
-    this.attackButton.hidden = !value;
+    for (const a of this.attacks) a.button.hidden = !value || a.label === null;
     if (!value) this.reset();
   }
 
-  /** Each release is consumed once; returning to the centre cancels the shot. */
   consumeAttack(): number | null {
     const gesture = this.consumeAttackGesture();
     return gesture?.aimed ? gesture.yaw : null;
   }
 
-  consumeAttackGesture(): AttackGesture | null {
-    const result = this.enabled ? this.pendingGesture : null;
-    this.pendingGesture = null;
+  consumeAttackGesture(slot: AttackSlot = 0): AttackGesture | null {
+    const a = this.attacks[slot];
+    const result = this.enabled && a.label !== null ? a.pending : null;
+    a.pending = null;
     return result;
   }
 
-  private cancelAim() {
-    this.gesture.reset();
-    this.attackId = null;
-    this.aiming = false;
-    this.attackKnob.style.transform = 'translate(-50%, -50%)';
-    this.attackButton.classList.remove('aiming');
+  private cancelAim(a: AttackControl) {
+    a.tracker.reset();
+    a.pointerId = null;
+    a.aiming = false;
+    a.marker.style.transform = 'translate(-50%, -50%)';
+    a.button.classList.remove('aiming');
   }
 
   get attackRadius() { return this.actualRadius; }
@@ -74,8 +106,76 @@ export class Input {
 
   private fitAttackArea() {
     const r = this.area.getBoundingClientRect();
-    this.actualRadius = Math.min(this.radiusSetting, Math.max(40, Math.min(r.height * .34, r.width * .22)));
-    this.attackButton.style.width = this.attackButton.style.height = `${this.actualRadius * 2}px`;
+    const count = Math.max(1, this.attacks.filter(a => a.label !== null).length);
+    // Reserve the bottom equipment row and top HUD; both disks fit in the right half.
+    const widthLimit = (r.width / 2 - 36 - (count - 1) * 12) / (count * 2);
+    const heightLimit = (r.height - 160) / 2;
+    this.actualRadius = Math.min(this.radiusSetting, Math.max(24, Math.min(widthLimit, heightLimit)));
+    for (const a of this.attacks) {
+      a.button.style.width = a.button.style.height = `${this.actualRadius * 2}px`;
+      a.button.style.setProperty?.('--attack-diameter', `${this.actualRadius * 2}px`);
+    }
+  }
+
+  private createAttackControl(slot: AttackSlot): AttackControl {
+    const button = document.createElement('button');
+    button.className = `attack-stick attack-area attack-slot-${slot} ui-block`;
+    button.innerHTML = '<span class="attack-center"></span><span class="attack-marker"></span><span class="attack-caption"></span><span class="attack-status"></span>';
+    const a: AttackControl = {
+      pointerId: null, button,
+      marker: button.querySelector('.attack-marker')!,
+      caption: button.querySelector('.attack-caption')!,
+      status: button.querySelector('.attack-status')!,
+      origin: [0, 0], range: 90, moved: false, label: slot === 0 ? 'АТАКА' : null,
+      pending: null, tracker: new AttackGestureTracker(), aiming: false, yaw: 0,
+    };
+    a.caption.textContent = slot === 0 ? '1 · АТАКА' : '';
+    button.hidden = slot !== 0;
+    button.setAttribute('aria-label', `Оружие ${slot + 1}: веди пальцем для прицеливания, отпусти для удара; центр отменяет атаку`);
+    this.area.appendChild(button);
+    const aim = (e: PointerEvent) => {
+      const dx = e.clientX - a.origin[0], dy = e.clientY - a.origin[1];
+      const len = Math.hypot(dx, dy), scale = Math.min(1, a.range / Math.max(1, len));
+      a.aiming = len >= a.range * (10 / 46);
+      if (a.aiming) a.yaw = Math.atan2(dx, dy);
+      a.tracker.sample(a.yaw, len / a.range, performance.now());
+      button.classList.toggle('aiming', a.aiming);
+      a.marker.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
+    };
+    button.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (!this.enabled || a.label === null || a.pointerId !== null || e.button !== 0) return;
+      if (this.attacks.some(other => other.pointerId === e.pointerId) || this.pointerId === e.pointerId) return;
+      const r = button.getBoundingClientRect();
+      a.range = Math.min(r.width, r.height) / 2;
+      a.origin = [r.left + r.width / 2, r.top + r.height / 2];
+      if (Math.hypot(e.clientX - a.origin[0], e.clientY - a.origin[1]) > a.range) return;
+      a.pointerId = e.pointerId;
+      a.moved = false;
+      const movement = this.vector;
+      if (Math.hypot(...movement) > 0.1) this.lastMovementYaw = Math.atan2(movement[0], movement[1]);
+      a.tracker.begin(performance.now(), this.lastMovementYaw);
+      button.setPointerCapture(e.pointerId);
+      a.aiming = false;
+      e.preventDefault();
+    });
+    button.addEventListener('pointermove', e => {
+      if (e.pointerId === a.pointerId) { a.moved = true; aim(e); }
+    });
+    button.addEventListener('pointerup', e => {
+      if (e.pointerId !== a.pointerId) return;
+      if (a.moved) aim(e);
+      if (this.enabled && a.label !== null && a.moved && a.aiming) a.pending = a.tracker.snapshot(performance.now());
+      this.cancelAim(a);
+    });
+    for (const type of ['pointercancel', 'lostpointercapture']) {
+      button.addEventListener(type, e => {
+        if ((e as PointerEvent).pointerId !== a.pointerId) return;
+        a.pending = null;
+        this.cancelAim(a);
+      });
+    }
+    return a;
   }
 
   constructor(area: HTMLElement) {
@@ -86,60 +186,13 @@ export class Input {
     this.knob.className = 'stick-knob';
     this.base.appendChild(this.knob);
     area.appendChild(this.base);
-    this.attackButton = document.createElement('button');
-    this.attackButton.className = 'attack-stick attack-area ui-block';
-    this.attackButton.setAttribute('aria-label', 'Область атаки: веди пальцем для прицеливания, отпусти для удара; центр отменяет атаку');
-    this.attackButton.innerHTML = '<span class="attack-center"></span><span class="attack-marker"></span><span class="attack-caption">АТАКА</span>';
-    this.attackKnob = this.attackButton.querySelector('.attack-marker')!;
-    area.appendChild(this.attackButton);
+    this.attacks = [this.createAttackControl(0), this.createAttackControl(1)];
     try {
       const saved = Number(localStorage.getItem('allgames-attack-radius'));
       if (saved >= 56 && saved <= 160) this.radiusSetting = saved;
     } catch { /* optional preference */ }
     this.fitAttackArea();
     addEventListener('resize', () => { this.reset(); this.fitAttackArea(); });
-    const aim = (e: PointerEvent) => {
-      const dx = e.clientX - this.attackOrigin[0], dy = e.clientY - this.attackOrigin[1];
-      const len = Math.hypot(dx, dy), scale = Math.min(1, this.attackRange / Math.max(1, len));
-      this.aiming = len >= this.attackRange * (10 / 46);
-      if (this.aiming) this.aimYaw = Math.atan2(dx, dy);
-      this.gesture.sample(this.aimYaw, len / this.attackRange, performance.now());
-      this.attackButton.classList.toggle('aiming', this.aiming);
-      this.attackKnob.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
-    };
-    this.attackButton.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      if (!this.enabled || this.attackId !== null || e.button !== 0) return;
-      const r = this.attackButton.getBoundingClientRect();
-      this.attackRange = Math.min(r.width, r.height) / 2;
-      this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
-      if (Math.hypot(e.clientX - this.attackOrigin[0], e.clientY - this.attackOrigin[1]) > this.attackRange) return;
-      this.attackId = e.pointerId;
-      this.attackMoved = false;
-      const movement = this.vector;
-      if (Math.hypot(...movement) > 0.1) this.lastMovementYaw = Math.atan2(movement[0], movement[1]);
-      this.gesture.begin(performance.now(), this.lastMovementYaw);
-      this.attackButton.setPointerCapture(e.pointerId);
-      this.aiming = false; // Touch-down position is not deliberate joystick motion.
-      e.preventDefault();
-    });
-    this.attackButton.addEventListener('pointermove', e => {
-      if (e.pointerId === this.attackId) { this.attackMoved = true; aim(e); }
-    });
-    this.attackButton.addEventListener('pointerup', e => {
-      if (e.pointerId !== this.attackId) return;
-      if (this.attackMoved) aim(e);
-      if (this.enabled && this.attackMoved && this.aiming) this.pendingGesture = this.gesture.snapshot(performance.now());
-      this.cancelAim();
-    });
-    for (const type of ['pointercancel', 'lostpointercapture']) {
-      this.attackButton.addEventListener(type, e => {
-        // Normal release loses capture after queuing its shot: preserve that shot.
-        if ((e as PointerEvent).pointerId !== this.attackId) return;
-        this.pendingGesture = null;
-        this.cancelAim();
-      });
-    }
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
 
     area.addEventListener('pointerdown', (e) => {
@@ -218,9 +271,8 @@ export class Input {
 
   reset() {
     this.pointerId = null;
-    this.pendingGesture = null;
     this.lastMovementYaw = null;
-    this.cancelAim();
+    for (const a of this.attacks) { a.pending = null; this.cancelAim(a); }
     this.x = this.y = 0;
     this.keys.clear();
     this.base.classList.remove('on');

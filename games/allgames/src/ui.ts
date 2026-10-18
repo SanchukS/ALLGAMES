@@ -339,7 +339,7 @@ export class UI {
   }
 
   /**
-   * Bottom "equipped" bar: armour left, the weapon and the class item (shield, or the hunter's `pet`) in the centre,
+   * Bottom "equipped" bar: armour left, two numbered weapons (or another class’s weapon and class item) in the centre,
    * gloves and jewellery right.
    */
   weapons(items: (Item | null)[], dmg: (it: Item) => number, equip: Partial<Record<ArmorSlot, Item>>, w: Wearer, pet: PetDef | null = null) {
@@ -348,7 +348,7 @@ export class UI {
       if (i === 1 && pet) return petCellHtml(pet, `data-pet title="Питомец: ${pet.name}"`, 'wslot active');
       const it = items[i];
       const title = !it ? '' : WEAPONS[it.def].guard ? `title="${WEAPONS[it.def].name}"` : `title="${WEAPONS[it.def].name}: ${Math.round(dmg(it))} урона"`;
-      return cellHtml(it, `data-w="${i}" ${title}`, i ? 'shield' : 'sword', '', it ? 'wslot active' : 'wslot', w);
+      return cellHtml(it, `data-w="${i}" ${title}`, 'sword', `<span class="wtag ${it ? 'on' : ''}">${i + 1}</span>`, it ? 'wslot active' : 'wslot', w);
     }).join('');
     const side = (ids: ArmorSlot[]) => ids.map((id) => {
       const x = ARMOR_SLOTS.find((s) => s.id === id)!;
@@ -539,7 +539,7 @@ export class UI {
 
   settings(muted: boolean, lowGfx: boolean, toggleMute: () => void, toggleGfx: () => void, reset: () => void, close: () => void, showLog: () => void) {
     this.open(`<div class="panel"><h2>Настройки</h2>
-      <p>Управление: движение — слева или WASD. Справа веди палец по кругу атаки, чтобы целиться; отпусти для удара. Верни палец в центр, чтобы отменить прицеливание и жест. Играй в горизонтальной ориентации.</p>
+      <p>Управление: движение — слева или WASD. Справа два круга — по одному на оружие. Веди палец по нужному кругу, чтобы целиться; отпусти для удара. Верни палец в центр, чтобы отменить прицеливание и жест. Играй в горизонтальной ориентации.</p>
       <div class="row"><button class="btn" id="m-mute">${muted ? '🔇 Звук выкл' : '🔊 Звук вкл'}</button>
       <button class="btn" id="m-gfx">${lowGfx ? '🖥 Графика: низкая' : '🖥 Графика: высокая'}</button></div>
       <div class="row"><button class="btn purple" id="m-debug">🛠 Дебаг-меню</button></div>

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newSave, loadSave, writeSave } from '../src/save';
 import { weaponDamage, normalizeItem, makeItem, itemLines } from '../src/items';
+import { classAcceptsSlot } from '../src/party';
 import { weaponLevel } from '../src/weaponProgression';
 
 const storage = new Map<string, string>();
@@ -13,8 +14,9 @@ Object.assign(globalThis, { localStorage: {
 test('new game gives all three test weapons at level one', () => {
   for (const faction of ['human', 'orc'] as const) {
     const save = newSave(faction);
-    const items = [save.weapons[0]!, ...save.bag];
-    assert.deepEqual(items.map((it) => it.def), ['sword', 'hammer', 'dagger']);
+    const items = [...save.weapons.filter((it) => it !== null), ...save.bag];
+    assert.deepEqual(items.map((it) => it.def).sort(), ['dagger', 'hammer', 'sword']);
+    assert.equal(save.weapons[1]?.def, 'dagger');
     assert.ok(items.every((it) => it.lvl === 1));
   }
 });
@@ -54,7 +56,7 @@ test('legacy weapon save migrates without resetting progress and restores missin
   assert.equal(loaded.weapons[0]!.lvl, 5);
   assert.equal(loaded.kills, 42);
   assert.ok(loaded.bag.some((it) => it.def === 'sword'));
-  assert.ok(loaded.bag.some((it) => it.def === 'dagger'));
+  assert.ok([...loaded.weapons, ...loaded.bag].some((it) => it?.def === 'dagger'));
   writeSave(loaded);
   assert.equal(loadSave()!.bag.length, loaded.bag.length, 'reloading must not duplicate starter weapons');
 });
@@ -76,4 +78,41 @@ test('awakened weapon round-trips through the persisted save', () => {
   save.weapons[0]!.awakened = true;
   writeSave(save);
   assert.equal(loadSave()!.weapons[0]!.awakened, true);
+});
+
+
+test('both equipped weapons preserve identities and independent upgrades across reloads', () => {
+  const save = newSave('human');
+  save.weapons = [makeItem('weapon', 'hammer', 2, 3), makeItem('weapon', 'sword', 4, 5)];
+  save.weapons[1]!.awakened = true;
+  writeSave(save);
+  const loaded = loadSave()!;
+  assert.deepEqual(loaded.weapons, save.weapons);
+  writeSave(loaded);
+  assert.deepEqual(loadSave()!.weapons, save.weapons);
+});
+
+test('legacy shield is kept in bag and empty secondary gets a weapon only once', () => {
+  const save = newSave('human');
+  delete save.dualWeapons;
+  const shield = makeItem('weapon', 'shield_tower', 2, 3);
+  save.weapons[1] = shield;
+  writeSave(save);
+  const loaded = loadSave()!;
+  assert.ok(loaded.weapons[1]);
+  assert.ok(loaded.bag.some((it) => it.uid === shield.uid));
+  loaded.bag.push(loaded.weapons[1]!);
+  loaded.weapons[1] = null;
+  writeSave(loaded);
+  assert.equal(loadSave()!.weapons[1], null, 'unequipping survives a reload');
+});
+
+
+test('warrior allows every prototype weapon in both slots without allowing shields or mage items', () => {
+  for (const slot of [0, 1] as const) {
+    for (const def of ['sword', 'dagger', 'hammer']) assert.equal(classAcceptsSlot('warrior', def, slot), true);
+    for (const def of ['shield_tower', 'staff_fire', 'orb_fury']) assert.equal(classAcceptsSlot('warrior', def, slot), false);
+  }
+  assert.equal(classAcceptsSlot('mage', 'orb_fury', 1), true);
+  assert.equal(classAcceptsSlot('mage', 'orb_fury', 0), false);
 });

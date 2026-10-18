@@ -9,7 +9,7 @@ export class AttackPreview {
   private outline = new THREE.Line(new THREE.BufferGeometry(), this.outlineMaterial);
   private key = '';
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, private readyColor = 0xa7efff) {
     this.root.add(this.mesh, this.outline);
     this.root.visible = false;
     scene.add(this.root);
@@ -38,8 +38,8 @@ export class AttackPreview {
     this.root.position.copy(position);
     this.root.position.y += 0.08;
     this.root.rotation.y = yaw;
-    this.material.color.setHex(ready ? 0xa7efff : 0xffad71);
-    this.outlineMaterial.color.setHex(ready ? 0xd6faff : 0xffad71);
+    this.material.color.setHex(ready ? this.readyColor : 0xffad71);
+    this.outlineMaterial.color.setHex(ready ? this.readyColor : 0xffad71);
   }
 
   hide() { this.root.visible = false; }

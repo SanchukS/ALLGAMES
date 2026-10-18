@@ -3,7 +3,7 @@ import { PROTOTYPE_WEAPONS } from './weaponProgression';
 import { FACTIONS, HERO, PETS, WEAPONS, type FactionId, type SavedSource, type StatId } from './config';
 import { BASE_STATS, type PctPoints, type StatPoints } from './balance';
 import { ARMOR, BAG_SIZE, makeItem, normalizeItem, type ArmorSlot, type Item } from './items';
-import { CLASSES, classSlot, kitOf, type HeroClass } from './party';
+import { CLASSES, classAcceptsSlot, classSlot, kitOf, type HeroClass } from './party';
 
 /**
  * Number scale of the save: 2 = hero HP ×10, regen in HP/s, 6 item qualities, item level = copies; 5 = flat power;
@@ -20,9 +20,11 @@ export interface SaveData {
   src: Partial<Record<SavedSource, StatPoints>>;
   /** Percent bonuses by source (+1 = +1%) to hp, regen and power. */
   pct: Partial<Record<SavedSource, PctPoints>>;
-  /** Gear slots of the party member on the field: weapon, class item (src/party.ts). */
+  /** Gear slots of the party member on the field: two weapons for the warrior; weapon and class item otherwise (src/party.ts). */
   weapons: [Item | null, Item | null];
   active: 0 | 1;
+  /** One-time migration: an empty second slot thereafter is the player’s choice. */
+  dualWeapons?: boolean;
   equip: Partial<Record<ArmorSlot, Item>>;
   bag: Item[];
   /** Legacy: the forest → cemetery barrier (now in `gates`). */
@@ -75,11 +77,12 @@ export function newSave(faction: FactionId): SaveData {
     faction,
     src: {},
     pct: {},
-    weapons: [makeItem('weapon', FACTIONS[faction].startWeapon, 0, 1), null],
+    weapons: [makeItem('weapon', FACTIONS[faction].startWeapon, 0, 1), makeItem('weapon', 'dagger', 0, 1)],
+    dualWeapons: true,
     kits: {},
     active: 0,
     equip: {},
-    bag: ['hammer', 'dagger'].map((def) => makeItem('weapon', def, 0, 1)),
+    bag: ['hammer'].map((def) => makeItem('weapon', def, 0, 1)),
     gates: [],
     scale: SCALE,
     bosses: {},
@@ -152,6 +155,11 @@ export function loadSave(): SaveData | null {
     for (const def of PROTOTYPE_WEAPONS) {
       if (!owned.some((it) => it?.def === def)) d.bag.push(makeItem('weapon', def, 0, 1));
     }
+    if (!d.dualWeapons && !d.weapons[1]) {
+      const index = d.bag.findIndex((it) => it.kind === 'weapon' && it.def !== d.weapons[0]?.def && classAcceptsSlot('warrior', it.def, 1));
+      if (index >= 0) d.weapons[1] = d.bag.splice(index, 1)[0];
+    }
+    d.dualWeapons = true;
     return d;
   } catch {
     return null;
@@ -159,15 +167,16 @@ export function loadSave(): SaveData | null {
 }
 
 /**
- * Two hands → weapon + class slot of class `owner` (src/party.ts classSlot): whatever does not fit its slot (a second
- * weapon, a shield in the right hand, a weapon of another class) goes to the bag; the weapon slot is never empty.
+ * Preserve both warrior attack slots. Incompatible legacy class equipment goes to the bag;
+ * the primary weapon slot is never empty.
  */
 function fitHands(d: SaveData, owner: HeroClass, hands: (Item | null)[]): SaveData['weapons'] {
   const out: SaveData['weapons'] = [null, null];
-  for (const raw of hands) {
+  for (const [index, raw] of hands.entries()) {
     const it = raw && known(normalizeItem(raw));
     if (!it) continue;
-    const s = classSlot(owner, it.def);
+    const preferred = index === 1 ? 1 : 0;
+    const s = classAcceptsSlot(owner, it.def, preferred) ? preferred : classSlot(owner, it.def);
     if (s !== null && !out[s]) out[s] = it;
     else d.bag.push(it);
   }

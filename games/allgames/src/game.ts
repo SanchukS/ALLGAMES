@@ -21,7 +21,7 @@ import {
 import { Input } from './input';
 import { sfx } from './audio';
 import { classKit, writeSave, type SaveData } from './save';
-import { CLASSES, CLASS_IDS, SWITCH_COOLDOWN, archerBow, classSlot, kitOf, weaponClass, type HeroClass } from './party';
+import { CLASSES, CLASS_IDS, SWITCH_COOLDOWN, archerBow, classAcceptsSlot, classSlot, kitOf, weaponClass, type HeroClass } from './party';
 import { BODY_PARTS, CLASS_LOOK, debugSetTrims, type Wearer } from './looks';
 import { assets } from './assets';
 import { Arrows, type ArrowTarget } from './arrows';
@@ -106,7 +106,8 @@ class Prop extends Unit {
 
 export class Game {
   readonly scene = new THREE.Scene();
-  private attackPreview = new AttackPreview(this.scene);
+  private attackPreviews = [new AttackPreview(this.scene), new AttackPreview(this.scene, 0xd5b0ff)];
+  private activeAttackSlot: 0 | 1 = 0;
   private weaponEffects = new WeaponEffects(this.scene);
   private abilityCharges = new Map<number, AbilityCharges>();
   private daggerStacks = new WeakMap<Mob, Map<number, number>>();
@@ -542,7 +543,7 @@ export class Game {
 
   // ---------- main loop ----------
   update(dt: number) {
-    if (this.paused) { this.input.reset(); this.attackPreview.hide(); this.render(0); return; }
+    if (this.paused) { this.input.reset(); this.attackPreviews.forEach(preview => preview.hide()); this.render(0); return; }
     dt = Math.min(dt, 1 / 20);
     if (this.slowT > 0) { this.slowT -= dt; dt *= this.slowK; }
     this.time += dt;
@@ -650,7 +651,7 @@ export class Game {
     const ch = this.hero;
     if (this.dead) {
       this.input.reset();
-      this.attackPreview.hide();
+      this.attackPreviews.forEach(preview => preview.hide());
       this.deadT += dt;
       ch.update(dt, false);
       // no death window: once the death clip has played, straight back to the camp
@@ -694,33 +695,46 @@ export class Game {
     this.world.collide(p, HERO.radius);
     this.collideBlockers(p, HERO.radius);
 
-    const attack = this.input.consumeAttackGesture();
-    const yaw = this.input.aimYaw;
-    this.target = this.aimTarget(yaw, this.weapon.range, this.weapon.shape, this.weapon.arc, this.weapon.id === 'hammer' ? this.weapon.range + STRIKE_PAD : 0);
+    const attacks = [this.input.consumeAttackGesture(0), this.input.consumeAttackGesture(1)];
+    const states = [this.input.attackState(0), this.input.attackState(1)];
+    for (const slot of [0, 1] as const) {
+      if (states[slot].aiming || attacks[slot]?.aimed) this.activeAttackSlot = slot;
+    }
+    const activeItem = this.save.weapons[this.activeAttackSlot] ?? this.weaponItem;
+    const activeWeapon = WEAPONS[activeItem.def];
+    const yaw = states[this.activeAttackSlot].aimYaw;
+    this.target = this.aimTarget(yaw, activeWeapon.range, activeWeapon.shape, activeWeapon.arc, activeWeapon.id === 'hammer' ? activeWeapon.range + STRIKE_PAD : 0);
     let want = ch.facing;
-    if (this.input.aiming) want = yaw;
+    if (states[this.activeAttackSlot].aiming) want = yaw;
     else if (moving) want = Math.atan2(ix, iy);
     const swinging = this.hands.find(h => h.impact >= 0);
     if (swinging) want = swinging.yaw;
-    if (attack?.aimed) want = attack.yaw;
+    const released = attacks[this.activeAttackSlot];
+    if (released?.aimed) want = released.yaw;
     const diff = Math.atan2(Math.sin(want - ch.facing), Math.cos(want - ch.facing));
     ch.facing += diff * Math.min(1, dt * 16);
 
-    for (const h of this.hands) this.updateHand(h, dt, this.cut ? null : attack);
-    const w = this.weapon;
-    const live = this.input.attackGesture;
-    const charges = this.chargesFor(this.weaponItem);
-    const plan = live && planWeaponAttack(w.id, weaponLevel(this.weaponItem), live, charges.remaining[0] === 0, charges.remaining[1] === 0);
-    const at = plan?.kind === 'leap' ? this.leapTarget(plan.yaw, plan.distance, weaponLevel(this.weaponItem)) : p;
-    if (plan?.kind === 'leap') {
-      const distance = Math.hypot(at.x - p.x, at.z - p.z) / (weaponLevel(this.weaponItem) >= 5 ? 7 : 5);
-      plan.damageScale = plan.areaScale = 1 + distance;
+    this.updateWeaponHands(dt, attacks);
+    for (const slot of [0, 1] as const) {
+      const it = this.save.weapons[slot];
+      const preview = this.attackPreviews[slot];
+      if (!it || WEAPONS[it.def].guard || WEAPONS[it.def].orb) { preview.hide(); continue; }
+      const w = WEAPONS[it.def];
+      const state = states[slot];
+      const live = state.gesture;
+      const charges = this.chargesFor(it);
+      const plan = live && planWeaponAttack(w.id, weaponLevel(it), live, charges.remaining[0] === 0, charges.remaining[1] === 0);
+      const at = plan?.kind === 'leap' ? this.leapTarget(plan.yaw, plan.distance, weaponLevel(it)) : p;
+      if (plan?.kind === 'leap') {
+        const distance = Math.hypot(at.x - p.x, at.z - p.z) / (weaponLevel(it) >= 5 ? 7 : 5);
+        plan.damageScale = plan.areaScale = 1 + distance;
+      }
+      const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1);
+      const previewYaw = plan?.yaw ?? state.aimYaw;
+      const center = this.weaponAttackCenter(at, w.id, plan?.kind ?? 'normal', previewYaw, radius);
+      preview.update(center, previewYaw, radius, w.shape === 'circle' ? 360 : w.arc,
+        !this.cut && this.input.enabled && state.holdingAttack && (!!plan || state.aiming), this.hands[slot].atkCd <= 0);
     }
-    const previewRadius = (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1);
-    const previewYaw = plan?.yaw ?? yaw;
-    const previewAt = this.weaponAttackCenter(at, w.id, plan?.kind ?? 'normal', previewYaw, previewRadius);
-    this.attackPreview.update(previewAt, previewYaw, previewRadius, w.shape === 'circle' ? 360 : w.arc,
-      !this.cut && this.input.enabled && this.input.holdingAttack && (!!plan || this.input.aiming), this.hands[0].atkCd <= 0);
 
 
     // regen; much faster in the camp
@@ -767,6 +781,11 @@ export class Game {
       if (d < nearest) { nearest = d; target = u; }
     }
     return target;
+  }
+
+  /** A release belongs exclusively to the weapon whose circle captured it. */
+  private updateWeaponHands(dt: number, attacks: (AttackGesture | null)[]) {
+    for (const h of this.hands) this.updateHand(h, dt, this.cut ? null : attacks[h.i]);
   }
 
   /** One hand's swing timer; the blow lands `impact` s after the swing starts. */
@@ -870,9 +889,16 @@ export class Game {
   }
 
   private updateAbilityDots() {
-    const it = this.weaponItem;
+    const it = this.save.weapons[this.activeAttackSlot] ?? this.weaponItem;
     const level = weaponLevel(it);
     const charges = this.chargesFor(it);
+    for (const hand of [0, 1] as const) {
+      const weapon = this.save.weapons[hand];
+      if (!weapon) continue;
+      const charge = this.chargesFor(weapon);
+      const text = [0, 1].map(i => weaponLevel(weapon) < (i ? 4 : 2) ? '×' : charge.remaining[i] > 0 ? String(charge.remaining[i]) : '✓');
+      this.input.setAttackStatus(hand, `I: ${text[0]} · II: ${text[1]}`);
+    }
     const stacks = this.target instanceof Mob ? this.daggerStacks.get(this.target)?.get(it.uid) ?? 0 : 0;
     for (const slot of [0, 1] as const) {
       const dot = this.abilityDots[slot];
@@ -2293,17 +2319,18 @@ export class Game {
   }
 
   /** Slot caption: "Оружие" or the class item's name. */
-  slotName(slot: 0 | 1) { return slot ? CLASSES[kitOf(this.heroClass)].offName : 'Оружие'; }
+  slotName(slot: 0 | 1) { if (this.heroClass === 'warrior') return `Оружие ${slot + 1}`; return slot ? CLASSES[kitOf(this.heroClass)].offName : 'Оружие'; }
 
   /** Equip an item from the bag; whatever was in that slot goes back into the bag. False: not for this class. */
-  equipFromBag(index: number) {
+  equipFromBag(index: number, requestedSlot?: 0 | 1) {
     const it = this.save.bag[index];
     if (!it) return false;
     if (!this.canUse(it)) {
       this.ui.toast(`${itemName(it, this.faction)} — не для класса «${CLASSES[this.heroClass].name}»`);
       return false;
     }
-    const slot = it.kind === 'weapon' ? classSlot(this.heroClass, it.def) : null;
+    const slot = it.kind === 'weapon' ? requestedSlot ?? classSlot(this.heroClass, it.def) : null;
+    if (it.kind === 'weapon' && (slot === null || !classAcceptsSlot(this.heroClass, it.def, slot))) return false;
     if (slot === 1 && this.offFixed()) return false;
     this.save.bag.splice(index, 1);
     if (slot !== null) {
@@ -2354,7 +2381,7 @@ export class Game {
   /** Fresh chains. */
   private resetHands() {
     this.input.reset();
-    this.attackPreview.hide();
+    this.attackPreviews.forEach(preview => preview.hide());
     this.parries.clear();
     this.leap = null;
     this.hero.position.y = 0;
@@ -2443,6 +2470,10 @@ export class Game {
     const foes = this.clearOf.get(zone.id) ?? [];
     this.ui.clearProgress(zone.id, zone.name, foes.filter((m) => !m.alive).length, foes.length);
     if (full) {
+      for (const slot of [0, 1] as const) {
+        const it = this.save.weapons[slot];
+        this.input.setAttackWeapon(slot, it && !WEAPONS[it.def].guard && !WEAPONS[it.def].orb ? itemName(it, this.faction) : null);
+      }
       this.ui.weapons(this.save.weapons, (it) => this.itemDamage(it), this.save.equip, this.wearer, this.petDef);
       this.ui.bagBadge(this.newItems, this.save.bag.length >= BAG_SIZE);
       this.ui.gachaBadge(this.save.pulls ?? 0);

@@ -215,3 +215,44 @@ test('hammer ordinary and charged circles rotate in front of hero and exclude en
   const landing = new THREE.Vector3(3, 0, 4);
   assert.deepEqual(g.weaponAttackCenter(landing, 'hammer', 'leap', 0, 2), landing);
 });
+
+test('each attack-circle release reaches only its corresponding hand', () => {
+  const { g } = setup();
+  const a = { aimed: true, yaw: .4 }, b = { aimed: true, yaw: -.7 };
+  g.hands = [{ i: 0 }, { i: 1 }];
+  const routed: any[] = [];
+  g.updateHand = (hand: any, _dt: number, attack: any) => routed.push([hand.i, attack]);
+  g.updateWeaponHands(.01, [null, b]);
+  assert.deepEqual(routed, [[0, null], [1, b]]);
+  routed.length = 0;
+  g.updateWeaponHands(.01, [a, b]);
+  assert.deepEqual(routed, [[0, a], [1, b]]);
+  g.cut = true; routed.length = 0;
+  g.updateWeaponHands(.01, [a, b]);
+  assert.deepEqual(routed, [[0, null], [1, null]]);
+});
+
+test('two equipped weapons keep independent hit-based ability cooldowns', () => {
+  const { g, item } = setup();
+  const other = { ...item, uid: 43 };
+  const first = g.chargesFor(item), second = g.chargesFor(other);
+  first.use(0); second.use(1);
+  first.normalHit();
+  assert.deepEqual(first.remaining, [2, 0]);
+  assert.deepEqual(second.remaining, [0, 3]);
+});
+
+test('secondary weapon performs a real hit without starting the primary weapon', () => {
+  const { g, h, calls, item } = setup('sword', 1);
+  g.save.weapons[1] = { ...item, def: 'dagger', uid: 43 };
+  const off = { ...h, i: 1 };
+  g.hands = [h, off]; g.units = [enemy()];
+  const gesture = { yaw: 0, heldSeconds: .1, sweepCount: 0, sweepYaw: 0, leap: false, distance: 1, aimed: true };
+  g.updateWeaponHands(.01, [null, gesture]);
+  assert.equal(h.impact, -1);
+  assert.equal(h.combo, 0);
+  assert.equal(off.combo, 1);
+  g.updateWeaponHands(.25, [null, null]);
+  assert.equal(calls.length, 1);
+  assert.equal(h.combo, 0);
+});

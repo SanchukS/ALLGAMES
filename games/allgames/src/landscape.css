@@ -237,3 +237,11 @@
   .g-body { grid-template-columns: 1fr; align-content: start; }
   .g-banner { grid-row: auto; }
 }
+
+/* Each equipped weapon owns a separate gesture disk; leave the equipment row below. */
+.attack-stick.attack-area { bottom: max(76px, calc(env(safe-area-inset-bottom) + 64px)); border-color: #83cbff99; background: radial-gradient(circle, #19394a16 0 20%, #2587b526 21% 100%); }
+.attack-stick.attack-area.attack-slot-1 { right: calc(max(18px, env(safe-area-inset-right)) + var(--attack-diameter, 180px) + 12px); border-color: #c9a3ff99; background: radial-gradient(circle, #34204a16 0 20%, #9858cf26 21% 100%); }
+.attack-area .attack-caption { left: 8px; right: 8px; bottom: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .9; font-size: 11px; }
+.attack-area .attack-status { position: absolute; left: 5px; right: 5px; bottom: 8px; font-size: 10px; line-height: 1; color: #fff3d5; pointer-events: none; }
+.attack-area.aiming { border-color: #fff1d0; }
+.attack-slot-0[hidden] ~ .attack-stick.attack-slot-1 { right: max(18px, env(safe-area-inset-right)); }

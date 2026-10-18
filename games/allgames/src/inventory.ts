@@ -332,7 +332,7 @@ export class Inventory {
     const weapons = ([0, 1] as const).map((i) => {
       if (i === 1 && pet) return petCellHtml(pet, `title="Питомец: ${pet.name}"`, 'active', '<span class="wtag on">питомец</span>');
       const tag = `<span class="wtag ${s.weapons[i] ? 'on' : ''}">${g.slotName(i).toLowerCase()}</span>`;
-      return this.cell(s.weapons[i], `data-weapon="${i}"`, i ? 'shield' : 'sword', tag, s.weapons[i] ? 'active' : '');
+      return this.cell(s.weapons[i], `data-weapon="${i}"`, 'sword', tag, s.weapons[i] ? 'active' : '');
     }).join('');
     const q = (id: string) => this.ui.modal.querySelector<HTMLElement>(id)!;
     q('#i-eq-l').innerHTML = armor(EQUIP_BAR.left);
@@ -502,7 +502,7 @@ export class Inventory {
       return `<li class="weapon-level ${unlocked ? 'unlocked' : 'locked'} ${level === i + 1 ? 'current' : ''}"><span class="weapon-level-num">${i + 1}</span><div><strong>${row.title}</strong><small>${unlocked ? 'Открыто' : 'Заблокировано · уровень ' + (i + 1)}</small><p>${row.description}</p></div></li>`;
     }).join('');
     tip.innerHTML = `<div class="weapon-fixed"><div class="card-head">${cellHtml(it, 'disabled', '', '', 'big', this.game.wearer)}<div class="card-title"><h3>${itemName(it, this.game.faction)}</h3><div class="pills"><span>${p.typeName}</span><span>Уровень ${level}/5</span></div></div><button class="xbtn" data-act="close" aria-label="Закрыть описание оружия">✕</button></div>
-      ${src.at === 'bag' ? '<div class="row"><button class="btn primary" data-act="equip">Экипировать</button></div>' : '<p class="weapon-equipped">Экипировано</p>'}
+      ${src.at === 'bag' ? '<div class="row weapon-equip-actions"><button class="btn primary" data-act="equip-0">В круг 1</button><button class="btn primary" data-act="equip-1">В круг 2</button></div>' : `<p class="weapon-equipped">Экипировано · круг ${src.at === 'weapon' ? src.slot + 1 : 1}</p>${src.at === 'weapon' && src.slot === 1 ? '<button class="btn" data-act="unequip">Снять</button>' : ''}`}
       <div class="card-sub weapon-stats">${stats}</div>
       <div class="weapon-level-controls"><button class="btn" data-act="level-down" aria-label="Уменьшить уровень" ${level <= 1 ? 'disabled' : ''}>− уровень</button><strong>${level} / 5</strong><button class="btn primary" data-act="level-up" aria-label="Увеличить уровень" ${level >= 5 ? 'disabled' : ''}>+ уровень</button></div></div>
       <div class="weapon-scroll"><p class="weapon-description">${p.description}</p><ol class="weapon-levels">${rows}</ol>
@@ -534,7 +534,8 @@ export class Inventory {
     }
     let ok = true;
     if (src.at === 'bag') {
-      if (action === 'equip') g.equipFromBag(src.index);
+      if (action === 'equip-0' || action === 'equip-1') g.equipFromBag(src.index, action === 'equip-1' ? 1 : 0);
+      else if (action === 'equip') g.equipFromBag(src.index);
       else if (action === 'discard') g.discardFromBag(src.index);
     } else if (src.at === 'armor') {
       ok = g.unequipArmor(src.slot);
