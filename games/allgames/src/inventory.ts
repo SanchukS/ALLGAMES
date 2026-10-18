@@ -502,11 +502,12 @@ export class Inventory {
       return `<li class="weapon-level ${unlocked ? 'unlocked' : 'locked'} ${level === i + 1 ? 'current' : ''}"><span class="weapon-level-num">${i + 1}</span><div><strong>${row.title}</strong><small>${unlocked ? 'Открыто' : 'Заблокировано · уровень ' + (i + 1)}</small><p>${row.description}</p></div></li>`;
     }).join('');
     tip.innerHTML = `<div class="weapon-fixed"><div class="card-head">${cellHtml(it, 'disabled', '', '', 'big', this.game.wearer)}<div class="card-title"><h3>${itemName(it, this.game.faction)}</h3><div class="pills"><span>${p.typeName}</span><span>Уровень ${level}/5</span></div></div><button class="xbtn" data-act="close" aria-label="Закрыть описание оружия">✕</button></div>
+      ${src.at === 'bag' ? '<div class="row"><button class="btn primary" data-act="equip">Экипировать</button></div>' : '<p class="weapon-equipped">Экипировано</p>'}
       <div class="card-sub weapon-stats">${stats}</div>
       <div class="weapon-level-controls"><button class="btn" data-act="level-down" aria-label="Уменьшить уровень" ${level <= 1 ? 'disabled' : ''}>− уровень</button><strong>${level} / 5</strong><button class="btn primary" data-act="level-up" aria-label="Увеличить уровень" ${level >= 5 ? 'disabled' : ''}>+ уровень</button></div></div>
       <div class="weapon-scroll"><p class="weapon-description">${p.description}</p><ol class="weapon-levels">${rows}</ol>
       <div class="weapon-awakening"><button class="btn" data-act="awaken" ${level < 5 || it.awakened ? 'disabled' : ''}>${it.awakened ? '✦ Оружие пробуждено' : '✦ Пробудить оружие'}</button><small>${it.awakened ? 'Доступ к будущим синергиям открыт. Сами синергии пока не добавлены.' : 'Доступно на 5-м уровне. Открывает возможность будущих синергий.'}</small></div>
-      ${src.at === 'bag' ? '<div class="row"><button class="btn primary" data-act="equip">Экипировать</button></div>' : '<p class="weapon-equipped">Экипировано</p>'}</div>`;
+      </div>`;
     this.bindTip(tip, src);
   }
 
