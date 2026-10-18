@@ -1,0 +1,228 @@
+/* Landscape uses real CSS pixels: UI.fit keeps HUD/modal scale at 1. */
+:root {
+  --edge-l: max(12px, env(safe-area-inset-left));
+  --edge-r: max(12px, env(safe-area-inset-right));
+  --edge-t: max(10px, env(safe-area-inset-top));
+  --edge-b: max(10px, env(safe-area-inset-bottom));
+  --stroke: 0 2px 0 var(--ink), 1px 0 var(--ink), -1px 0 var(--ink), 0 -1px var(--ink);
+  --stroke-s: 0 1px 2px var(--ink), 1px 0 var(--ink), -1px 0 var(--ink);
+}
+#app { inset: 0; transform: none; width: 100%; height: 100%; max-width: none; }
+#hud, #pro-hud, #modal { inset: 0; width: 100%; height: 100%; transform: none; }
+#rotate { display: none; }
+@media (orientation: portrait) {
+  #rotate { display: flex; font-size: 22px; }
+  #rotate .ic { animation: landscape-hint 1.6s ease-in-out infinite; }
+}
+@keyframes landscape-hint { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+
+/* The centre and both lower corners are reserved for the battlefield and thumbs. */
+.top-left { top: var(--edge-t); left: var(--edge-l); gap: 4px; }
+.round-btn, #btn-bag, #btn-gacha { width: 48px; height: 48px; }
+.round-btn .svgi, #btn-bag .svgi, #btn-gacha .svgi { width: 36px; height: 36px; }
+#btn-bag, #btn-gacha { position: absolute; top: var(--edge-t); right: auto; transform: none; }
+#btn-bag { left: calc(var(--edge-l) + 58px); }
+#btn-gacha { left: calc(var(--edge-l) + 116px); }
+#btn-bag:active { transform: translateY(2px); }
+.round-btn.nav span { font-size: 10px; bottom: -7px; }
+.top-right { top: calc(var(--edge-t) + 4px); right: calc(var(--edge-r) + 4px); width: 94px; }
+#minimap { width: 82px; height: 82px; }
+#minimap, #bigmap { border-width: 3px; box-shadow: 0 0 0 3px #c48a52, 0 0 0 5px var(--ink); }
+#zone-foes { left: -20px; top: 0; }
+#zone-foes .foe { width: 22px; height: 22px; }
+#zone-foes .foe .svgi { width: 16px; height: 16px; }
+#clear { left: 50%; right: auto; top: var(--edge-t); transform: translateX(-50%); width: min(30%, 300px); gap: 3px; }
+#clear .cl-badge { width: 30px; height: 30px; border-width: 2px; margin-right: -12px; }
+#clear .cl-badge .svgi { width: 21px; height: 21px; }
+#clear .cl-zone { font-size: 11px; }
+#clear .cl-bar { height: 16px; border-width: 2px; }
+#clear .cl-pct { min-width: 40px; font-size: 19px; }
+#buffs { font-size: 11px; }
+#buffs div { padding: 3px 6px; border-width: 2px; }
+#equipbar { left: 50%; right: auto; transform: translateX(-50%); width: min(40%, 360px); bottom: var(--edge-b); padding: 0; gap: 5px; }
+#equipbar #weapons .cell { width: 44px; height: 44px; }
+#equipbar .armorside .cell { max-width: 32px; }
+#equipbar .cell .lv, #equipbar .armorside .cell .lv { font-size: 12px; }
+#equipbar .cell .badge { width: 15px; height: 15px; }
+#equipbar .armorside, #equipbar #weapons { gap: 4px; }
+#combo { gap: 4px; }
+#combo i { width: 12px; height: 12px; border-width: 2px; }
+#party { right: calc(var(--edge-r) + 105px); bottom: auto; top: var(--edge-t); flex-direction: row; gap: 8px; }
+#party .cls { width: 40px; height: 40px; border-width: 2px; }
+#party .cls .svgi { width: 27px; height: 27px; }
+#party .cls b { font-size: 10px; }
+#hint, #pro-hint { left: 24%; right: 24%; bottom: calc(var(--edge-b) + 68px); font-size: 14px; }
+#zone-banner { top: 23%; font-size: 26px; }
+#zone-banner small { font-size: 13px; }
+#clear-banner .cb-title { font-size: 26px; }
+#clear-banner .cb-sub { font-size: 13px; }
+.gain { font-size: 14px; }
+.big-btn { bottom: calc(var(--edge-b) + 65px); min-height: 44px; font-size: 15px; }
+
+/* All windows scroll within the available height, without moving the page. */
+#modal, #modal:has(.inv), #modal:has(.sheet) { padding: var(--edge-t) var(--edge-r) var(--edge-b) var(--edge-l); align-items: center; }
+.panel { max-width: 560px; max-height: 100%; overflow-y: auto; padding: 16px 20px 24px; touch-action: pan-y; }
+.panel h2 { font-size: 24px; margin: 0 0 8px; padding-bottom: 6px; }
+.panel p { font-size: 14px; }
+.panel .row { gap: 8px; margin-top: 8px; }
+.btn, .tip .btn { font-size: 15px; min-height: 44px; padding: 8px 12px 12px; }
+.btn small { font-size: 11px; }
+.xbtn { width: 48px; height: 44px; }
+.tip-wrap { padding: var(--edge-t) var(--edge-r) var(--edge-b) var(--edge-l); }
+.tip { max-width: 620px; padding: 14px 18px 24px; touch-action: pan-y; }
+.card-head .cell.big { width: 60px; height: 60px; }
+.card-title h3 { font-size: 21px; }
+.pills span { font-size: 12px; }
+.card-main, .card-main .v { font-size: 18px; }
+.card-sub { font-size: 14px; }
+.card-sub span { font-size: 11px; }
+.ability p { font-size: 14px; }
+.ab-title { font-size: 17px; }
+
+/* Equipment left, bag right; statistics span the top edge. */
+#modal.show:has(.sheet.inv) { display: grid; grid-template-columns: minmax(235px, .9fr) minmax(290px, 1.4fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; align-items: stretch; justify-content: stretch; }
+#modal > .top-stats { grid-column: 1 / -1; margin: 0; padding: 8px 112px 8px 12px; border-radius: 14px; display: flex; align-items: center; gap: 16px; }
+.top-stats .sc-title { font-size: 16px; }
+.top-stats .big-stats { display: flex; margin: 0; gap: 16px; }
+.top-stats .big-stats .svgi { width: 27px; height: 27px; }
+.top-stats .big-stats b { font-size: 18px; }
+.top-stats .big-stats span { font-size: 9px; bottom: -6px; }
+.top-stats .chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.top-stats .chip { min-height: 30px; padding: 2px 5px; gap: 3px; border-radius: 8px; }
+.top-stats .chip .svgi { width: 22px; height: 22px; }
+.top-stats .chip b { font-size: 14px; }
+.top-stats .xbtn, .top-stats .info-btn { top: 7px; width: 44px; height: 44px; }
+.top-stats .xbtn { right: 10px; }
+.top-stats .info-btn { right: 60px; font-size: 25px; }
+.inv-equipped { margin: 10px 0 0; padding: 20px 12px 15px; min-height: 0; border-radius: 16px; }
+.eq-title { font-size: 18px; }
+.eq-doll { grid-template-columns: 48px 1fr 48px; grid-template-rows: minmax(0, 1fr) 48px; height: 100%; gap: 7px; }
+.eq-doll .cell { width: 48px; height: 48px; }
+.inv-equipped .cell .lv { font-size: 15px; }
+.inv-equipped .cell .badge { width: 18px; height: 18px; }
+.eq-doll .cell .wtag { font-size: 9px; bottom: -9px; }
+.eq-rot { gap: 4px; }
+.eq-rot button { width: 36px; height: 36px; font-size: 22px; }
+.sheet.inv { margin: 0; min-width: 0; max-height: 100%; padding: 0 14px 12px; border-image-width: 22px 24px 20px 24px; }
+.sheet.inv::after { display: none; }
+.sheet.inv .sheet-head { height: 30px; }
+.sheet.inv .sheet-title { position: static; transform: none; text-align: center; font-size: 22px; }
+.sheet.inv .tabs { gap: 8px; margin-bottom: 5px; }
+.tab { width: 44px; height: 44px; }
+.tab .svgi { width: 30px; height: 30px; }
+.sheet.inv .tabs .cap { font-size: 14px; }
+.tabs .cap .b-other { font-size: 10px; }
+.sheet .grid { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 8px; }
+.sheet .grid .cell .lv { font-size: 18px; }
+.sheet.inv .sheet-body { padding-bottom: 8px; touch-action: pan-y; }
+.divider { font-size: 13px; margin: 9px 0; }
+.divider span::before, .divider span::after { margin: 3px 7px 0; width: 7px; height: 7px; border-width: 3px 0 0 3px; }
+.sheet.inv .hint-line { font-size: 10px; margin: 5px 0 0; }
+.sheet .none { font-size: 15px; }
+#i-tip .tip.weapon-tip { display: grid; grid-template-columns: minmax(220px, .85fr) minmax(260px, 1.15fr); gap: 16px; max-width: 940px; height: 100%; max-height: 100%; padding: 16px 18px 24px; font-size: 14px; }
+#i-tip .weapon-tip .weapon-fixed { overflow-y: auto; min-height: 0; touch-action: pan-y; }
+#i-tip .weapon-tip .card-title h3 { font-size: 21px; }
+#i-tip .weapon-tip .weapon-stats { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+#i-tip .weapon-tip .weapon-stats b { font-size: 14px; }
+#i-tip .weapon-tip .weapon-level { gap: 8px; padding: 10px; }
+#i-tip .weapon-tip .weapon-level-num { flex-basis: 26px; height: 26px; }
+#i-tip .weapon-tip .weapon-levels { gap: 7px; }
+#i-tip .weapon-tip .weapon-level p { font-size: 13px; margin-top: 5px; }
+#i-tip .weapon-tip .weapon-level small, #i-tip .weapon-tip .weapon-awakening small { font-size: 11px; }
+#i-tip .weapon-tip .btn { font-size: 13px; }
+#i-tip .weapon-tip .weapon-level-controls { gap: 5px; margin: 10px 0; }
+#i-tip .weapon-tip .weapon-scroll { touch-action: pan-y; }
+.stats-win { max-width: 740px; max-height: 100%; padding: 14px 18px 24px; }
+.sw-head { margin-bottom: 8px; padding: 8px 48px; }
+.sw-head h2 { font-size: 23px; }
+.sw-head small { font-size: 13px; }
+.sw-head .xbtn { top: 0; right: 0; width: 44px; height: 44px; }
+.sw-list { padding: 8px; gap: 7px; touch-action: pan-y; }
+.sw-row { padding: 8px; gap: 8px; }
+.sw-row .svgi { width: 32px; height: 32px; }
+.sw-name { font-size: 15px; }
+.sw-name small { font-size: 11px; }
+.sw-row b, .sd-top span, .sd-top b, .sd-formula b { font-size: 19px; }
+.sd-row, .sd-formula { font-size: 15px; }
+.sd-formula i, .sd-formula small { font-size: 12px; }
+
+/* Intro, loading and forge use width instead of stacking beyond the viewport. */
+#loading { padding: var(--edge-t) var(--edge-r) var(--edge-b) var(--edge-l); gap: 6px; overflow-y: auto; }
+#loading .logo { font-size: clamp(32px, 7vh, 54px); }
+#loading .bar { width: min(420px, 60%); margin-top: 10px; flex-shrink: 0; }
+#loading .loading-feedback { width: min(520px, 90%); margin-top: 10px; font-size: 13px; }
+#loading .loading-feedback p { margin-bottom: 2px; }
+#dialogue { bottom: var(--edge-b); left: 50%; width: min(760px, calc(100% - var(--edge-l) - var(--edge-r))); max-height: calc(100% - 60px - var(--edge-t)); overflow-y: auto; transform: translateX(-50%); padding: 12px 16px 24px; touch-action: pan-y; }
+.dlg-who { margin: 0 0 6px; }
+.dlg-portrait { width: 44px; height: 44px; margin: 0; border-width: 2px; }
+.dlg-portrait .svgi { max-width: 34px; max-height: 34px; }
+.dlg-who b { font-size: 18px; }
+.dlg-text { min-height: 0; font-size: 15px; padding: 8px 10px; }
+.dlg-choices { flex-direction: row; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dlg-choices .btn { min-height: 44px; font-size: 14px; }
+.dlg-skip.btn { position: static; float: right; min-height: 44px; font-size: 13px; }
+#pro-stats { left: var(--edge-l); top: var(--edge-t); font-size: 16px; }
+#pro-stats .svgi { width: 26px; height: 26px; }
+#pro-quest { right: var(--edge-r); top: var(--edge-t); max-width: 220px; font-size: 14px; }
+.factions { left: 50%; transform: translateX(-50%); width: min(800px, 100%); max-height: 100%; overflow-y: auto; padding: 10px 16px; touch-action: pan-y; }
+.factions h1 { font-size: 20px; margin-bottom: 8px; }
+.factions .lead { font-size: 14px; }
+.fcard { font-size: 13px; }
+.fcard h3 { font-size: 21px; }
+.factions .btn { margin-top: 8px; }
+.g-head { padding: var(--edge-t) 65px 6px; }
+.g-title { font-size: 23px; }
+.g-head .xbtn { top: var(--edge-t); right: var(--edge-r); }
+.g-body { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(220px, 400px) minmax(160px, 260px); grid-auto-rows: min-content; align-content: center; justify-content: center; gap: 8px 20px; padding: 8px var(--edge-r) var(--edge-b) var(--edge-l); touch-action: pan-y; }
+.g-banner { grid-column: 1; grid-row: span 5; padding: 12px; }
+.g-weapon { height: clamp(65px, 19vh, 150px); }
+.g-weapon .svgi { max-height: 100%; }
+.g-name { font-size: 21px; }
+.g-sub { font-size: 12px; margin: 3px 0 6px; }
+.g-rates, .g-pity { font-size: 12px; }
+.g-pull { min-height: 48px; font-size: 17px; }
+.g-body.g-over { display: flex; flex-direction: row; align-items: flex-end; justify-content: flex-end; }
+.g-result { max-width: 380px; max-height: 100%; overflow-y: auto; padding: 10px 12px; }
+.g-result .g-name, .g-result.r3 .g-name { font-size: 22px; }
+.g-hint { bottom: var(--edge-b); left: 50%; transform: translateX(-50%); }
+#debug { top: calc(var(--edge-t) + 65px); bottom: var(--edge-b); left: var(--edge-l); right: auto; width: min(420px, calc(100% - var(--edge-l) - var(--edge-r))); }
+#debug.min { top: auto; width: auto; }
+.dbg-btns button, .dbg-build button { min-height: 36px; font-size: 12px; }
+.dbg-head button { width: 36px; height: 32px; }
+.dbg-info { font-size: 11px; }
+.dbg-sec > span { font-size: 12px; }
+@media (max-height: 430px) {
+  #modal > .top-stats { min-height: 58px; gap: 10px; }
+  .top-stats .sc-title { display: none; }
+  .top-stats .big-stats { gap: 8px; }
+  .top-stats .chip { min-height: 25px; padding: 1px 3px; }
+  .top-stats .chip .svgi { width: 18px; height: 18px; }
+  .top-stats .chip b { font-size: 12px; }
+  .eq-doll { grid-template-columns: 40px 1fr 40px; grid-template-rows: minmax(0, 1fr) 40px; gap: 4px; }
+  .eq-doll .cell { width: 40px; height: 40px; }
+  .eq-rot button { width: 32px; height: 32px; }
+  #modal.show:has(.sheet.inv) { gap: 6px 12px; }
+  .g-body { gap: 6px 16px; }
+  .g-lines { gap: 3px; }
+  .g-lines div { padding: 3px 6px; font-size: 11px; }
+}
+@media (max-width: 620px) {
+  #clear { left: 53%; width: 25%; }
+  #clear .cl-badge { display: none; }
+  #clear .cl-zone { padding-left: 0; }
+  #clear .cl-pct { font-size: 15px; min-width: 30px; }
+  #party { display: none; }
+  #modal.show:has(.sheet.inv) { grid-template-columns: minmax(200px, .8fr) minmax(240px, 1fr); gap: 6px; }
+  #modal > .top-stats { padding-left: 8px; }
+  .top-stats .chips { gap: 2px; }
+  #i-tip .tip.weapon-tip { grid-template-columns: minmax(190px, .9fr) minmax(220px, 1.1fr); gap: 10px; padding: 12px 14px 22px; }
+}
+
+/* Fixed aiming disk: the centre represents the hero; no joystick thumb knob. */
+.attack-stick.attack-area { right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); width: calc(var(--attack-radius, 90px) * 2); height: calc(var(--attack-radius, 90px) * 2); border: 2px solid #ffd4b880; background: radial-gradient(circle, #29151116 0 20%, #9e333b26 21% 100%); box-shadow: inset 0 0 30px #ffffff08, 0 3px 15px #0003; transform: none; }
+.attack-area.aiming { border-color: #ffe9d0; background-color: #b940402b; }
+.attack-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 21.739%; height: 21.739%; border: 2px dashed #ffe9d0cc; border-radius: 50%; background: #211b2299; pointer-events: none; }
+.attack-marker { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: 0; transform: translate(-50%, -50%); border-radius: 50%; background: #fff4dd; box-shadow: 0 0 8px #ffb28e; pointer-events: none; opacity: 0; }
+.attack-area.aiming .attack-marker { opacity: 1; }
+.attack-area .attack-caption { top: auto; bottom: 12px; margin: 0; font-size: 10px; opacity: .65; }
+@media (max-width: 620px) { #equipbar { width: 30%; } }

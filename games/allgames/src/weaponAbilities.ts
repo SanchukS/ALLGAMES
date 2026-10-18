@@ -12,13 +12,14 @@ export interface AttackPlan {
 
 /** Interpret a gesture without consuming charges; commit only when the swing starts. */
 export function planWeaponAttack(def: string, level: number, gesture: AttackGesture, firstReady: boolean, secondReady: boolean): AttackPlan | null {
+  if (!gesture.aimed) return null; // Releasing in the centre never casts, including hammer charge.
   const normal: AttackPlan = { kind: 'normal', yaw: gesture.yaw, damageScale: 1, areaScale: 1, distance: 0 };
   if (def === 'hammer') {
     if (level >= 4 && secondReady && gesture.leap && gesture.aimed) {
       const distance = Math.max(0, Math.min(1, gesture.distance));
       return { ...normal, kind: 'leap', distance, damageScale: 1 + distance, areaScale: 1 + distance };
     }
-    // A held hammer attack may charge while the stick remains in its centre.
+    // Charge starts on aiming; returning to centre cancels it.
     if (level >= 2 && firstReady && gesture.heldSeconds >= 0.35) {
       const charge = Math.min(1, gesture.heldSeconds / (level >= 3 ? 1.5 : 2));
       return { ...normal, kind: 'charge', damageScale: 1 + charge, areaScale: 1 + charge };

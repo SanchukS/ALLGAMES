@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setMaxListeners } from 'node:events';
 import * as THREE from 'three';
 import { Input } from '../src/input';
 import { AttackPreview } from '../src/attackPreview';
@@ -22,6 +23,7 @@ class Element extends EventTarget {
 }
 const win = new EventTarget();
 const doc = Object.assign(new EventTarget(), { createElement: () => new Element(), hidden: false });
+setMaxListeners(0, win, doc);
 Object.assign(globalThis, { document: doc, addEventListener: win.addEventListener.bind(win) });
 function setup() {
   const area = new Element();
@@ -141,4 +143,40 @@ test('real joystick input queues single and double sweeps at 30/60/120 Hz', (t) 
       assert.equal(input.consumeAttackGesture(), null);
     }
   }
+});
+
+
+test('attack disk rejects square corners and movement ignores the right half', () => {
+  const { input, area, attack } = setup();
+  pointer(attack, 'pointerdown', 1, 1, 1);
+  assert.equal(input.holdingAttack, false);
+  pointer(area, 'pointerdown', 2, 70, 20);
+  pointer(area, 'pointermove', 2, 90, 80);
+  assert.deepEqual(input.vector, [0, 0]);
+});
+
+test('centre resets charge while holding, and radius/resize cancel pending shots', (t) => {
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  const { input, attack } = setup();
+  pointer(attack, 'pointerdown', 1, 50, 50);
+  pointer(attack, 'pointermove', 1, 95, 50);
+  now = 2200;
+  assert.equal(planWeaponAttack('hammer', 2, input.attackGesture!, true, true)?.kind, 'charge');
+  pointer(attack, 'pointermove', 1, 50, 50);
+  assert.equal(planWeaponAttack('hammer', 2, input.attackGesture!, true, true), null);
+  pointer(attack, 'pointermove', 1, 95, 50);
+  assert.equal(input.attackGesture?.heldSeconds, 0);
+  assert.equal(planWeaponAttack('hammer', 2, input.attackGesture!, true, true)?.kind, 'normal');
+  pointer(attack, 'pointerup', 1, 95, 50);
+  input.setAttackRadius(1000);
+  assert.equal(input.attackRadiusSetting, 160);
+  assert.equal(input.consumeAttackGesture(), null);
+  input.setAttackRadius(1);
+  assert.equal(input.attackRadiusSetting, 56);
+  pointer(attack, 'pointerdown', 2, 50, 50);
+  pointer(attack, 'pointermove', 2, 95, 50);
+  win.dispatchEvent(new Event('resize'));
+  pointer(attack, 'pointerup', 2, 95, 50);
+  assert.equal(input.consumeAttackGesture(), null);
 });

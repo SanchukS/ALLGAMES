@@ -125,7 +125,7 @@ test('real charged hammer hits expanded circle, knocks back and stuns each enemy
   const { g, h, calls, item } = setup('hammer', 2);
   const a = enemy(0, 1), b = enemy(0, 4); a.impact = b.impact = .2;
   g.units = [a, b];
-  const gesture = { yaw: 0, heldSeconds: 2, sweepCount: 0, sweepYaw: 0, leap: false, distance: 0, aimed: false };
+  const gesture = { yaw: 0, heldSeconds: 2, sweepCount: 0, sweepYaw: 0, leap: false, distance: 1, aimed: true };
   g.updateHand(h, .01, gesture);
   assert.equal(h.plan.kind, 'charge');
   g.updateHand(h, .42, null);

@@ -139,6 +139,11 @@ const SECTIONS: [string, Action[]][] = [
   ['Горнило', [
     ['+5 круток', (g) => g.debugAddPulls(5), 'wide'],
   ]],
+  ['Область атаки', [
+    ['−10 px', (g) => g.debugSetAttackRadius(g.debugInfo().attackRadiusSetting - 10)],
+    ['90 px', (g) => g.debugSetAttackRadius(90)],
+    ['+10 px', (g) => g.debugSetAttackRadius(g.debugInfo().attackRadiusSetting + 10)],
+  ]],
   ['Скейл героя', [
     ['−0.1', (g) => g.debugSetHeroScale(g.heroScale - 0.1)],
     ['×1', (g) => g.debugSetHeroScale(1)],
@@ -254,13 +259,10 @@ export class DebugPanel {
 
   /** The strip spans from the gap between the bag and the class buttons down to the weapon slots, left of the class buttons (both move with the HUD scale). */
   private fit() {
-    const app = this.el.parentElement!.getBoundingClientRect();
-    const bag = document.getElementById('btn-bag')!.getBoundingClientRect();
-    const party = document.getElementById('party')!.getBoundingClientRect();
-    const weapons = document.getElementById('weapons')!.getBoundingClientRect();
-    this.el.style.setProperty('--dbg-top', `${(bag.bottom + party.top) / 2 - app.top}px`);
-    this.el.style.setProperty('--dbg-bottom', `${app.bottom - weapons.top + 4}px`);
-    this.el.style.setProperty('--dbg-right', `${app.right - party.left + 4}px`);
+    this.el.style.setProperty('--dbg-top', '54px');
+    this.el.style.setProperty('--dbg-bottom', '12px');
+    this.el.style.setProperty('--dbg-right', '12px');
+
   }
 
   private render() {
@@ -271,6 +273,7 @@ export class DebugPanel {
     this.el.querySelectorAll<HTMLElement>('.set').forEach((b) =>
       b.classList.toggle('on', CLASS_IDS.some((c) => b.classList.contains(c) && b.classList.contains(`r${looks[c]}`))));
     this.info.textContent = [
+      `Радиус атаки: ${Math.round(d.attackRadius)} px (настройка ${d.attackRadiusSetting} px)`,
       `ХП ${d.hp}/${d.maxHp}${d.god ? '  [бессмертие]' : ''}`,
       `Крит ${pct(d.crit)} ×${d.critMul.toFixed(2)}  уклон ${pct(d.dodge)}  ${d.speed.toFixed(2)} м/с`,
       `Скейл: герой ×${d.heroScale.toFixed(2)}  враги ×${d.mobScale.toFixed(2)}  обзор ${d.fov}°`,

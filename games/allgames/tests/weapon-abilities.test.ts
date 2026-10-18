@@ -20,8 +20,8 @@ test('sword unlocks a centered sweep at level 2 and double sweep at level 3', ()
 });
 
 test('hammer partial charging, upgrade speed and cap use area rather than radius', () => {
-  const g = gesture({ heldSeconds: 1, aimed: false });
-  assert.equal(planWeaponAttack('hammer', 1, g, true, true), null);
+  const g = gesture({ heldSeconds: 1, aimed: true });
+  assert.equal(planWeaponAttack('hammer', 1, g, true, true)?.kind, 'normal');
   assert.equal(planWeaponAttack('hammer', 2, gesture({ heldSeconds: 0.34, aimed: false }), true, true), null);
   const charge = planWeaponAttack('hammer', 2, g, true, true)!;
   assert.equal(charge.kind, 'charge');
@@ -29,7 +29,7 @@ test('hammer partial charging, upgrade speed and cap use area rather than radius
   assert.equal(charge.areaScale, 1.5);
   assert.equal(planWeaponAttack('hammer', 3, gesture({ heldSeconds: 1.5 }), true, true)?.areaScale, 2);
   assert.equal(planWeaponAttack('hammer', 2, gesture({ heldSeconds: 100 }), true, true)?.damageScale, 2);
-  assert.equal(planWeaponAttack('hammer', 5, g, false, true), null);
+  assert.equal(planWeaponAttack('hammer', 5, g, false, true)?.kind, 'normal');
 });
 
 test('hammer leap has priority, level gating and bounded target distance', () => {
@@ -72,4 +72,11 @@ test('dagger unlocks per-target stacking and triggers exactly each tenth stack',
   assert.equal(daggerHit(9, 5).finisherMultiplier, 1.5);
   assert.equal(daggerHit(19, 5).finisherMultiplier, 3);
   assert.equal(daggerHit(10, 5).finisherMultiplier, 0);
+});
+
+
+test('centre release never casts any weapon or hammer ability, regardless of stale gesture fields', () => {
+  for (const def of ['sword', 'hammer', 'dagger']) {
+    assert.equal(planWeaponAttack(def, 5, gesture({ aimed: false, leap: true, sweepCount: 2, heldSeconds: 10 }), true, true), null);
+  }
 });

@@ -25,10 +25,10 @@ test('slow aim and arcs below 90 degrees do not count as sweeps', () => {
     assert.equal(g.snapshot(duration).sweepCount, 0);
   }
 });
-test('crossing centre cancels slash but backward-forward gesture permits leap', () => {
+test('crossing centre cancels slash and the backward-forward leap gesture', () => {
   const g = new AttackGestureTracker(); g.begin(0, 0);
   g.sample(Math.PI, 1, 10); g.sample(Math.PI, 0, 100); g.sample(0, 1, 200);
-  assert.equal(g.snapshot(200).leap, true);
+  assert.equal(g.snapshot(200).leap, false);
   assert.equal(g.snapshot(200).sweepCount, 0);
 });
 test('leap requires known movement and quick reversal', () => {
@@ -40,7 +40,7 @@ test('leap requires known movement and quick reversal', () => {
 });
 test('stationary hold exposes charge time, reset clears history', () => {
   const g = new AttackGestureTracker(); g.begin(100); g.sample(0, 0, 100);
-  assert.equal(g.snapshot(2100).heldSeconds, 2);
+  assert.equal(g.snapshot(2100).heldSeconds, 0);
   assert.equal(g.snapshot(2100).aimed, false);
   g.reset(); g.begin(3000);
   assert.equal(g.snapshot(3000).sweepCount, 0);
@@ -148,4 +148,21 @@ test('single and double ninety-degree arcs can each take 900 ms', () => {
   assert.equal(g.snapshot(980).sweepCount, 1);
   arc(g, 45, -45, 900, 900);
   assert.equal(g.snapshot(1880).sweepCount, 2);
+});
+
+
+test('centre cancels armed leap and charge, then starts a fresh aim without lifting', () => {
+  const g = new AttackGestureTracker(); g.begin(0, 0);
+  g.sample(Math.PI, 1, 10); g.sample(0, 1, 200);
+  assert.equal(g.snapshot(200).leap, true);
+  g.sample(0, 0, 300);
+  const centred = g.snapshot(3000);
+  assert.equal(centred.leap, false);
+  assert.equal(centred.sweepCount, 0);
+  assert.equal(centred.heldSeconds, 0);
+  g.sample(0, 1, 3100);
+  assert.equal(g.snapshot(3100).heldSeconds, 0);
+  assert.equal(g.snapshot(3100).leap, false);
+  g.sample(Math.PI, 1, 3200); g.sample(0, 1, 3400);
+  assert.equal(g.snapshot(3400).leap, true);
 });

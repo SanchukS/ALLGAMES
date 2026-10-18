@@ -51,15 +51,24 @@ const labels = document.getElementById('labels')!;
 /** Glow, grade and vignette over the game view (src/post.ts); null on low graphics. */
 let post: Post | null = new Post(renderer);
 
+let viewportWidth = 0;
+let viewportHeight = 0;
 function resize() {
-  const w = app.clientWidth;
-  const h = app.clientHeight;
+  const w = Math.max(1, app.clientWidth);
+  const h = Math.max(1, app.clientHeight);
+  // A rotation or browser toolbar change invalidates the old touch coordinates.
+  // Cancel without producing a release attack and let the next touch start afresh.
+  if (w !== viewportWidth || h !== viewportHeight) input.reset();
+  viewportWidth = w;
+  viewportHeight = h;
   renderer.setSize(w, h, false);
   post?.resize();
   ui.fit();
   return { w, h };
 }
 addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(app);
 new DragScroll(app);
 resize();
 
@@ -174,7 +183,7 @@ function startGame(faction: FactionId, fresh: boolean, gains?: Gains) {
   if (fresh) {
     ui.flash();
     sfx.levelUp();
-    setTimeout(() => ui.toast('Тяни палец по экрану — герой бьёт врагов сам'), 1200);
+    setTimeout(() => ui.toast('Двигайся слева, целься в круге справа и отпускай для удара'), 1200);
     setTimeout(() => ui.toast('Бочки, ящики и кусты тоже можно рубить: из них падают сферы силы'), 6000);
   }
 }
@@ -195,7 +204,7 @@ function prologue() {
     p.camera.aspect = app.clientWidth / app.clientHeight;
     p.camera.updateProjectionMatrix();
     p.viewH = renderer.domElement.height;
-    p.update(dt);
+    if (app.clientWidth >= app.clientHeight) p.update(dt);
     if (post) post.render(p.scene, p.camera);
     else renderer.render(p.scene, p.camera);
   });
@@ -285,7 +294,7 @@ function run() {
     const { w, h } = { w: app.clientWidth, h: app.clientHeight };
     if (game.camera.aspect !== w / h) { game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); resize(); }
     game.viewH = renderer.domElement.height;
-    game.update(dt);
+    if (w >= h) game.update(dt);
     if (game.offscreen) return;
     if (post) post.render(game.scene, game.camera);
     else renderer.render(game.scene, game.camera);

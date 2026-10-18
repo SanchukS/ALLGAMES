@@ -2748,12 +2748,15 @@ export class Game {
     this.target = null;
   }
 
+  debugSetAttackRadius(radius: number) { this.input.setAttackRadius(radius); }
+
   /** Live numbers for the debug panel. */
   debugInfo() {
     const s = this.stats;
     return {
       hp: Math.ceil(this.hp), maxHp: this.maxHp, god: this.god, heroScale: this.heroScale, mobScale: this.mobScale, fov: this.camera.fov,
       crit: s.crit, critMul: s.critMul, dodge: s.dodge, speed: s.speed,
+      attackRadius: this.input.attackRadius, attackRadiusSetting: this.input.attackRadiusSetting,
     };
   }
 

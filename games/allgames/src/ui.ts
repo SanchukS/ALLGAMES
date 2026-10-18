@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  FACTIONS, fmtOrb, UI_REF, WEAPONS, ZONE_FOES,
+  FACTIONS, fmtOrb, WEAPONS, ZONE_FOES,
   type FactionId, type OrbKind, type PetDef, type ZoneDef,
 } from './config';
 import { ARMOR_SLOTS, EQUIP_BAR, cellHtml, petCellHtml, type ArmorSlot, type Item } from './items';
@@ -191,27 +191,21 @@ export class UI {
   }
 
   size() { return { w: this.app.clientWidth, h: this.app.clientHeight }; }
-  /** HUD scale: #hud / #pro-hud are a UI_REF.hud rectangle centred on the screen and scaled by --hs (windows: --ms). */
+  /** Landscape layout uses physical CSS pixels, keeping touch targets and text readable. */
   scale = 1;
   fit() {
     const { w, h } = this.size();
-    const { hud, modal } = UI_REF;
-    this.scale = Math.min(w / hud.w, h / hud.h);
     const st = this.app.style;
-    st.setProperty('--hs', String(this.scale));
-    st.setProperty('--ms', String(Math.min(w / modal.w, h / modal.h)));
-    st.setProperty('--hw', `${hud.w}px`);
-    st.setProperty('--hh', `${hud.h}px`);
-    st.setProperty('--mw', `${modal.w}px`);
-    st.setProperty('--mh', `${modal.h}px`);
+    st.setProperty('--hs', '1');
+    st.setProperty('--ms', '1');
+    st.setProperty('--hw', `${w}px`);
+    st.setProperty('--hh', `${h}px`);
+    st.setProperty('--mw', `${w}px`);
+    st.setProperty('--mh', `${h}px`);
   }
 
-  /** Screen px of #app → px inside the centred, scaled HUD rectangle. */
-  toHud(x: number, y: number) {
-    const { w, h } = this.size();
-    const s = this.scale;
-    return { x: (x - (w - UI_REF.hud.w * s) / 2) / s, y: (y - (h - UI_REF.hud.h * s) / 2) / s };
-  }
+  /** HUD and canvas share the same unscaled app coordinates. */
+  toHud(x: number, y: number) { return { x, y }; }
   get modalOpen() { return this.modal.classList.contains('show'); }
 
   showHud(on: boolean) { $('hud').classList.toggle('hidden', !on); }
@@ -545,7 +539,7 @@ export class UI {
 
   settings(muted: boolean, lowGfx: boolean, toggleMute: () => void, toggleGfx: () => void, reset: () => void, close: () => void, showLog: () => void) {
     this.open(`<div class="panel"><h2>Настройки</h2>
-      <p>Управление: тяни палец в любом месте экрана (или WASD). Атака — автоматически. Смена класса — кнопки справа внизу или 1 / 2 / 3.</p>
+      <p>Управление: движение — слева или WASD. Справа веди палец по кругу атаки, чтобы целиться; отпусти для удара. Верни палец в центр, чтобы отменить прицеливание и жест. Играй в горизонтальной ориентации.</p>
       <div class="row"><button class="btn" id="m-mute">${muted ? '🔇 Звук выкл' : '🔊 Звук вкл'}</button>
       <button class="btn" id="m-gfx">${lowGfx ? '🖥 Графика: низкая' : '🖥 Графика: высокая'}</button></div>
       <div class="row"><button class="btn purple" id="m-debug">🛠 Дебаг-меню</button></div>

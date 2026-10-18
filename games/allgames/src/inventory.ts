@@ -1,4 +1,3 @@
-import './weaponProgression.css';
 import { isPrototypeWeapon, weaponLevel, WEAPON_PROGRESS } from './weaponProgression';
 import * as THREE from 'three';
 import { Character } from './character';

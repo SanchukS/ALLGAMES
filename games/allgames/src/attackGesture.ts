@@ -38,11 +38,16 @@ export class AttackGestureTracker {
   }
 
   sample(yaw: number, distance: number, now: number) {
+    const wasCentred = this.distance < DEAD_ZONE;
     this.distance = Math.max(0, Math.min(1, distance));
     if (this.distance < DEAD_ZONE) {
-      this.samples = []; // A crossing through the centre is not a circular gesture.
+      this.samples = [];
+      this.backwardsAt = null;
+      this.leap = false;
+      this.start = now; // Centre cancels pending gestures and charge, never ability cooldowns.
       return;
     }
+    if (wasCentred) this.start = now;
     this.yaw = yaw;
     if (this.movementYaw !== null && !this.leap) {
       const relative = Math.abs(wrap(yaw - this.movementYaw));
@@ -116,7 +121,7 @@ export class AttackGestureTracker {
         }
       }
     }
-    return { yaw: this.yaw, heldSeconds: Math.max(0, (now - this.start) / 1000), sweepCount, sweepYaw,
+    return { yaw: this.yaw, heldSeconds: this.distance >= DEAD_ZONE ? Math.max(0, (now - this.start) / 1000) : 0, sweepCount, sweepYaw,
       leap: this.leap, distance: this.distance, aimed: this.distance >= DEAD_ZONE };
   }
 }

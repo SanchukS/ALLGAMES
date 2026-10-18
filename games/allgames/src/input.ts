@@ -1,6 +1,6 @@
 import { AttackGestureTracker, type AttackGesture } from './attackGesture';
 /**
- * Floating movement stick plus an independent, fixed attack stick.
+ * Left-side floating movement stick plus an independent circular aiming area.
  * Drag the attack stick to aim; release outside its dead zone to strike. WASD/arrows move on desktop.
  */
 export class Input {
@@ -18,6 +18,11 @@ export class Input {
   private attackButton: HTMLButtonElement;
   private attackKnob: HTMLSpanElement;
   private attackOrigin = [0, 0];
+  private attackRange = 90;
+  private radiusSetting = 90;
+  private actualRadius = 90;
+  private attackMoved = false;
+  private area: HTMLElement;
   private pendingGesture: AttackGesture | null = null;
   private gesture = new AttackGestureTracker();
   private lastMovementYaw: number | null = null;
@@ -56,7 +61,25 @@ export class Input {
     this.attackButton.classList.remove('aiming');
   }
 
+  get attackRadius() { return this.actualRadius; }
+  get attackRadiusSetting() { return this.radiusSetting; }
+
+  setAttackRadius(radius: number) {
+    if (!Number.isFinite(radius)) return;
+    this.radiusSetting = Math.max(56, Math.min(160, Math.round(radius)));
+    this.reset();
+    this.fitAttackArea();
+    try { localStorage.setItem('allgames-attack-radius', String(this.radiusSetting)); } catch { /* optional preference */ }
+  }
+
+  private fitAttackArea() {
+    const r = this.area.getBoundingClientRect();
+    this.actualRadius = Math.min(this.radiusSetting, Math.max(40, Math.min(r.height * .34, r.width * .22)));
+    this.attackButton.style.width = this.attackButton.style.height = `${this.actualRadius * 2}px`;
+  }
+
   constructor(area: HTMLElement) {
+    this.area = area;
     this.base = document.createElement('div');
     this.base.className = 'stick-base';
     this.knob = document.createElement('div');
@@ -64,40 +87,49 @@ export class Input {
     this.base.appendChild(this.knob);
     area.appendChild(this.base);
     this.attackButton = document.createElement('button');
-    this.attackButton.className = 'attack-stick ui-block';
-    this.attackButton.setAttribute('aria-label', 'Атака: потяни для прицеливания, отпусти для удара');
-    this.attackButton.innerHTML = '<span class="attack-knob">⚔</span><span class="attack-caption">АТАКА</span>';
-    this.attackKnob = this.attackButton.querySelector('.attack-knob')!;
+    this.attackButton.className = 'attack-stick attack-area ui-block';
+    this.attackButton.setAttribute('aria-label', 'Область атаки: веди пальцем для прицеливания, отпусти для удара; центр отменяет атаку');
+    this.attackButton.innerHTML = '<span class="attack-center"></span><span class="attack-marker"></span><span class="attack-caption">АТАКА</span>';
+    this.attackKnob = this.attackButton.querySelector('.attack-marker')!;
     area.appendChild(this.attackButton);
+    try {
+      const saved = Number(localStorage.getItem('allgames-attack-radius'));
+      if (saved >= 56 && saved <= 160) this.radiusSetting = saved;
+    } catch { /* optional preference */ }
+    this.fitAttackArea();
+    addEventListener('resize', () => { this.reset(); this.fitAttackArea(); });
     const aim = (e: PointerEvent) => {
       const dx = e.clientX - this.attackOrigin[0], dy = e.clientY - this.attackOrigin[1];
-      const len = Math.hypot(dx, dy), scale = Math.min(1, 46 / Math.max(1, len));
-      this.aiming = len >= 10;
+      const len = Math.hypot(dx, dy), scale = Math.min(1, this.attackRange / Math.max(1, len));
+      this.aiming = len >= this.attackRange * (10 / 46);
       if (this.aiming) this.aimYaw = Math.atan2(dx, dy);
-      this.gesture.sample(this.aimYaw, len / 46, performance.now());
+      this.gesture.sample(this.aimYaw, len / this.attackRange, performance.now());
       this.attackButton.classList.toggle('aiming', this.aiming);
       this.attackKnob.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
     };
     this.attackButton.addEventListener('pointerdown', e => {
       e.stopPropagation();
       if (!this.enabled || this.attackId !== null || e.button !== 0) return;
+      const r = this.attackButton.getBoundingClientRect();
+      this.attackRange = Math.min(r.width, r.height) / 2;
+      this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
+      if (Math.hypot(e.clientX - this.attackOrigin[0], e.clientY - this.attackOrigin[1]) > this.attackRange) return;
       this.attackId = e.pointerId;
+      this.attackMoved = false;
       const movement = this.vector;
       if (Math.hypot(...movement) > 0.1) this.lastMovementYaw = Math.atan2(movement[0], movement[1]);
       this.gesture.begin(performance.now(), this.lastMovementYaw);
-      const r = this.attackButton.getBoundingClientRect();
-      this.attackOrigin = [r.left + r.width / 2, r.top + r.height / 2];
       this.attackButton.setPointerCapture(e.pointerId);
       this.aiming = false; // Touch-down position is not deliberate joystick motion.
       e.preventDefault();
     });
     this.attackButton.addEventListener('pointermove', e => {
-      if (e.pointerId === this.attackId) aim(e);
+      if (e.pointerId === this.attackId) { this.attackMoved = true; aim(e); }
     });
     this.attackButton.addEventListener('pointerup', e => {
       if (e.pointerId !== this.attackId) return;
-      aim(e);
-      if (this.enabled) this.pendingGesture = this.gesture.snapshot(performance.now());
+      if (this.attackMoved) aim(e);
+      if (this.enabled && this.attackMoved && this.aiming) this.pendingGesture = this.gesture.snapshot(performance.now());
       this.cancelAim();
     });
     for (const type of ['pointercancel', 'lostpointercapture']) {
@@ -113,8 +145,9 @@ export class Input {
     area.addEventListener('pointerdown', (e) => {
       if (!this.enabled || this.pointerId !== null) return;
       if ((e.target as HTMLElement).closest('.ui-block, #modal, button')) return;
-      this.pointerId = e.pointerId;
       const r = area.getBoundingClientRect();
+      if (e.clientX - r.left >= r.width / 2) return;
+      this.pointerId = e.pointerId;
       this.ox = e.clientX - r.left;
       this.oy = e.clientY - r.top;
       this.radius = Math.max(56, Math.min(r.width, r.height) * 0.16);
