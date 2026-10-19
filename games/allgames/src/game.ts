@@ -1,4 +1,5 @@
-import { isHarvestSynergy } from './synergy';
+import { BloodMarks } from './bloodMarks';
+import { isHarvestSynergy, isBloodSynergy } from './synergy';
 import { HarvestHelpers } from './harvestHelpers';
 import { AbilityCharges, daggerHit, planWeaponAttack, type AttackPlan } from './weaponAbilities';
 import { isPrototypeWeapon, weaponLevel } from './weaponProgression';
@@ -109,6 +110,8 @@ class Prop extends Unit {
 export class Game {
   readonly scene = new THREE.Scene();
   private harvestHelpers = new HarvestHelpers<{ position: THREE.Vector3; dead: boolean; mob: Mob }>(this.scene);
+  private bloodMarks = new BloodMarks<Mob>(this.scene);
+  private get bloodSynergy() { return isBloodSynergy(this.save.weapons); }
   private get harvestSynergy() { return isHarvestSynergy(this.save.weapons); }
   private attackPreviews = [new AttackPreview(this.scene), new AttackPreview(this.scene, 0xd5b0ff)];
   private reaperPulls: { t: number; level: number; targets: { mob: Mob; from: THREE.Vector3; to: THREE.Vector3; blocked: boolean }[]; center: THREE.Vector3; lines: THREE.Line[] }[] = [];
@@ -566,6 +569,8 @@ export class Game {
     if (this.blockers.some((b) => b.until <= this.time)) this.blockers = this.blockers.filter((b) => b.until > this.time);
     this.updateHero(dt);
     this.updateMobs(dt);
+    if (this.bloodSynergy && !this.dead) this.bloodMarks.update(this.time);
+    else this.bloodMarks.clear();
     this.updateReaperPulls(dt);
     this.updateHarvestHelpers(dt);
     this.updatePet(dt);
@@ -994,6 +999,7 @@ export class Game {
           this.fx.spawn(m.pos.clone().setY(2.6), `${dagger.stacks} ст.`, 'dmg', 0.5, { color: '#ff9393' });
           if (dagger.finisherMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
         }
+        if (this.bloodSynergy && it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep') && this.canReap(m)) this.bloodMarks.add(m, this.time);
         if (this.harvestSynergy && it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep')) this.harvestHelpers.summon(m.pos);
         if (!this.harvestSynergy && it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
         if (it.def === 'hammer' && area && m.alive) {
@@ -1093,9 +1099,11 @@ export class Game {
       if (fraction < 1 && !this.dead) continue;
       const arrived = pull.targets.filter(t => !this.dead && !t.blocked && this.canReap(t.mob) && t.mob.pos.distanceTo(t.to) < .25)
         .map(t => t.mob).sort((a, b) => a.hp - b.hp);
+      if (this.bloodSynergy) this.consumeBloodMarks(arrived);
+      const survivors = arrived.filter(m => this.canReap(m)).sort((a, b) => a.hp - b.hp);
       if (pull.level >= 4) {
-        const excess = Math.max(0, arrived.length - (pull.level >= 5 ? 2 : 3));
-        for (const m of arrived.slice(0, excess)) {
+        const excess = Math.max(0, survivors.length - (pull.level >= 5 ? 2 : 3));
+        for (const m of survivors.slice(0, excess)) {
           this.fx.spawn(m.pos.clone().setY(2), 'ЖАТВА', 'dmg', .7, { color: '#baffcf' });
           this.weaponEffects.slash(m.pos, 0, .8, 160, 0xafffd1, true);
           m.hp = 0; this.killMob(m);
@@ -1103,6 +1111,27 @@ export class Game {
       }
       for (const line of pull.lines) { line.removeFromParent(); line.geometry.dispose(); (line.material as THREE.Material).dispose(); }
       this.reaperPulls.splice(i, 1);
+    }
+  }
+
+  private consumeBloodMarks(arrived: Mob[]) {
+    let healingStacks = 0;
+    const stats = this.stats;
+    for (const mob of arrived) {
+      const stacks = this.bloodMarks.consume(mob, this.time);
+      if (!stacks) continue;
+      const before = mob.hp;
+      this.damageMob(mob, (20 + stats.power) * stats.powerMul * .75 * stacks, 'normal', 0);
+      if (mob.hp >= before) continue;
+      healingStacks += stacks;
+      this.fightOf(mob).hits++;
+      this.weaponEffects.slash(mob.pos, 0, 1, 360, 0xff3355, true);
+      this.fx.spawn(mob.pos.clone().setY(2.5), `ЖАТВА ×${stacks}`, 'dmg', .7, { color: '#ff6688' });
+    }
+    const healed = Math.max(0, Math.min(this.maxHp - this.hp, this.maxHp * .02 * Math.min(6, healingStacks)));
+    if (healed > 0) {
+      this.hp += healed;
+      this.fx.spawn(this.hero.position.clone().setY(2.5), `+${Math.round(healed)}`, 'dmg', .7, { color: '#7dff9e' });
     }
   }
 
@@ -2493,6 +2522,7 @@ export class Game {
   /** Fresh chains. */
   private resetHands() {
     this.harvestHelpers.clear();
+    this.bloodMarks.clear();
     this.input.reset();
     this.hero.reaperAim(0, false); this.hero.reaperAim(1, false);
     this.attackPreviews.forEach(preview => preview.hide());

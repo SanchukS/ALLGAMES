@@ -410,3 +410,54 @@ test('sword cuts start on weapon side and return, in either hand after any norma
     assert.deepEqual(swings.map(s => s.slice(0, 2)), [['slashRL', hand], ['slashLR', hand]]);
   }
 });
+
+async function bloodSetup() {
+  const { BloodMarks } = await import('../src/bloodMarks');
+  const result = reaperSetup(5), { g } = result;
+  g.save.weapons = ['sword', 'reaper'].map((def, i) => ({ kind: 'weapon', def, uid: 80+i, lvl: 5, awakened: true }));
+  g.bloodMarks = new BloodMarks(g.scene);
+  Object.defineProperty(g, 'maxHp', { value: 1000 }); g.hp = 500;
+  return result;
+}
+test('blood synergy cuts mark only pullable hit enemies, twice for double cut', async () => {
+  const { g } = await bloodSetup(); const { h } = setup();
+  const normal = enemy(), boss = enemy(.1, 1), mini = enemy(.2, 1), passive = enemy(.3, 1, true);
+  boss.def.boss = {}; mini.def.rank = 'mini'; g.units = [normal, boss, mini, passive];
+  g.prototypeStrike(h); assert.equal(g.bloodMarks.consume(normal, g.time), 0);
+  h.plan.kind = 'doubleSweep'; g.prototypeStrike(h); g.prototypeStrike(h, true);
+  assert.equal(g.bloodMarks.consume(normal, g.time), 2);
+  for (const m of [boss, mini, passive]) assert.equal(g.bloodMarks.consume(m, g.time), 0);
+});
+test('completed pull consumes marks, deals damage and heals with a per-cast cap before execution', async () => {
+  const { g, killed } = await bloodSetup();
+  g.mobs = Array.from({ length: 6 }, (_, i) => enemy(i * .1, 3));
+  for (const m of g.mobs) { g.bloodMarks.add(m, g.time); g.bloodMarks.add(m, g.time); }
+  const damages: number[] = [];
+  g.damageMob = (m: any, damage: number) => { assert.equal(killed.length, 0); damages.push(damage); m.hp -= damage; };
+  g.startReaperPull(0, 5); g.updateReaperPulls(.45);
+  assert.deepEqual(damages, [30,30,30,30,30,30]); assert.equal(g.hp, 620); assert.equal(killed.length, 4);
+  for (const m of g.mobs) assert.equal(g.bloodMarks.consume(m, g.time), 0);
+});
+test('blocked pull retains marks, expired marks and immune targets do not heal', async () => {
+  const { g } = await bloodSetup(); const m = enemy(0, 4); g.mobs = [m];
+  g.bloodMarks.add(m, g.time);
+  g.world.collide = (p: THREE.Vector3) => { if (p.z < 3 && p.z > 2.5) p.z = 3; };
+  g.startReaperPull(0, 5); g.updateReaperPulls(.45);
+  assert.equal(g.hp, 500); assert.equal(g.bloodMarks.consume(m, g.time), 1);
+  g.bloodMarks.add(m, g.time); g.time += 8; g.consumeBloodMarks([m]); assert.equal(g.hp, 500);
+  g.bloodMarks.add(m, g.time); g.damageMob = noop; g.consumeBloodMarks([m]); assert.equal(g.hp, 500);
+  assert.equal(g.bloodMarks.consume(m, g.time), 0);
+});
+test('blood healing never exceeds max HP and unmarked pulls give no healing', async () => {
+  const { g } = await bloodSetup(); const m = enemy(); g.hp = 995;
+  g.consumeBloodMarks([m]); assert.equal(g.hp, 995);
+  g.bloodMarks.add(m, g.time); g.consumeBloodMarks([m]); assert.equal(g.hp, 1000);
+});
+test('reaper execution reorders survivors after blood damage', async () => {
+  const { g, killed } = await bloodSetup();
+  const a = enemy(-.2, 3), b = enemy(0, 3), c = enemy(.2, 3);
+  a.hp = 100; b.hp = 110; c.hp = 200; g.mobs = [a,b,c];
+  g.bloodMarks.add(b, g.time); g.bloodMarks.add(b, g.time);
+  g.startReaperPull(0, 5); g.updateReaperPulls(.45);
+  assert.deepEqual(killed, [b]); assert.equal(a.hp, 100);
+});
