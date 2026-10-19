@@ -52,3 +52,17 @@ test('obstacle callback blocks helper movement', () => {
   host.blocked = () => true; helpers.update(.2, host);
   assert.equal(scene.children[0].position.x, 3);
 });
+
+test('sickle helper summon probability is fifty percent per splash victim', () => {
+  for (const roll of [.49, .5]) {
+    let value = 0;
+    const { helpers, host } = setup(() => value);
+    helpers.summon(new THREE.Vector3());
+    value = roll;
+    host.enemies = [{ position: new THREE.Vector3(.3, 0, 0), dead: false }];
+    helpers.update(.2, host); helpers.update(.91, host);
+    assert.equal(helpers.count, 1);
+    helpers.update(.91, host);
+    assert.equal(helpers.count, roll < .5 ? 2 : 1);
+  }
+});

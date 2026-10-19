@@ -994,7 +994,7 @@ export class Game {
           this.fx.spawn(m.pos.clone().setY(2.6), `${dagger.stacks} ст.`, 'dmg', 0.5, { color: '#ff9393' });
           if (dagger.finisherMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
         }
-        if (this.harvestSynergy && it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep') && Math.random() < .2) this.harvestHelpers.summon(m.pos);
+        if (this.harvestSynergy && it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep')) this.harvestHelpers.summon(m.pos);
         if (!this.harvestSynergy && it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
         if (it.def === 'hammer' && area && m.alive) {
           m.stun = Math.max(m.stun, 1);

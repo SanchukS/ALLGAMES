@@ -91,7 +91,7 @@ export class HarvestHelpers<T extends HarvestTarget = HarvestTarget> {
           const at = victim.position.clone();
           if (host.dealDamage(victim, Math.max(0, host.characterDamage) * .25) === false) continue;
           landed = true;
-          if (splash && h.sickle && this.random() < .05) this.summon(at);
+          if (splash && h.sickle && this.random() < .5) this.summon(at);
         }
         if (landed) {
           h.hits++;

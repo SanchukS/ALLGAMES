@@ -363,12 +363,12 @@ function awakenPair(g: any, item: any) {
   Object.assign(item, { kind: 'weapon', awakened: true });
   g.save.weapons[1] = { kind: 'weapon', def: item.def === 'hammer' ? 'sword' : 'hammer', uid: 43, lvl: 5, awakened: true };
 }
-test('harvest sickle rolls once per victim per cut and never parries', () => {
+test('harvest sickle summons for every victim per cut and never parries', () => {
   const { g, h, item } = setup(); awakenPair(g, item);
   let summoned = 0; g.harvestHelpers = { summon: () => summoned++ };
   const a = enemy(), b = enemy(.4, 1); a.impact = b.impact = .3; g.units = [a,b];
   h.plan.kind = 'doubleSweep';
-  const random = Math.random; Math.random = () => .19;
+  const random = Math.random; Math.random = () => .999;
   try { g.prototypeStrike(h); g.prototypeStrike(h, true); }
   finally { Math.random = random; }
   assert.equal(summoned, 4); assert.equal(g.parries.has(a), false);
