@@ -7,9 +7,12 @@ export interface AttackGesture {
   leap: boolean;
   distance: number;
   aimed: boolean;
+  /** Final continuous 300-degree turn; optional for older input producers. */
+  reaperTurn?: boolean;
 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export const SWORD_SWEEP = { angle: 90 * Math.PI / 180, windowMs: 1000, releaseGraceMs: 160, jitter: 4 * Math.PI / 180 };
+export const REAPER_TURN = { angle: 300 * Math.PI / 180, windowMs: 1500, releaseGraceMs: 160, jitter: 4 * Math.PI / 180 };
 const QUICK_MS = 650; // Hammer gesture remains independent of release.
 const DEAD_ZONE = 10 / 46;
 type Sample = { yaw: number; time: number };
@@ -60,11 +63,11 @@ export class AttackGestureTracker {
     if (Math.abs(delta) >= Math.PI * 0.75) this.samples = [];
     this.samples.push({ yaw: this.samples.length && last ? last.yaw + delta : yaw, time: now });
     // Keep enough history for two quick arcs, plus one interpolation anchor.
-    while (this.samples.length > 2 && this.samples[1].time < now - SWORD_SWEEP.windowMs * 2) this.samples.shift();
+    while (this.samples.length > 2 && this.samples[1].time < now - Math.max(SWORD_SWEEP.windowMs * 2, REAPER_TURN.windowMs + REAPER_TURN.releaseGraceMs)) this.samples.shift();
   }
 
   /** Reverse scan with angular hysteresis: tiny tremors are not deliberate turns. */
-  private endingArc(end: number, releasedAt: number) {
+  private endingArc(end: number, releasedAt: number, config = SWORD_SWEEP) {
     const finish = this.samples[end];
     let direction = 0;
     let crossing: Sample | null = null;
@@ -76,12 +79,12 @@ export class AttackGestureTracker {
     for (let i = end - 1; i >= 0; i--) {
       const a = this.samples[i], b = this.samples[i + 1];
       const delta = b.yaw - a.yaw;
-      if (movedAt === null && Math.abs(finish.yaw - a.yaw) > SWORD_SWEEP.jitter) movedAt = b.time;
-      if (!direction && Math.abs(finish.yaw - a.yaw) > SWORD_SWEEP.jitter) {
+      if (movedAt === null && Math.abs(finish.yaw - a.yaw) > config.jitter) movedAt = b.time;
+      if (!direction && Math.abs(finish.yaw - a.yaw) > config.jitter) {
         direction = Math.sign(finish.yaw - a.yaw);
       }
       if (direction) {
-        if ((a.yaw - extreme) * direction > SWORD_SWEEP.jitter + 1e-6) {
+        if ((a.yaw - extreme) * direction > config.jitter + 1e-6) {
           boundary = extremeIndex;
           turned = true;
           break;
@@ -92,18 +95,18 @@ export class AttackGestureTracker {
         }
       }
       boundary = i;
-      if (!crossing && direction && (finish.yaw - a.yaw) * direction >= SWORD_SWEEP.angle - 1e-6) {
-        const yaw = finish.yaw - direction * SWORD_SWEEP.angle;
+      if (!crossing && direction && (finish.yaw - a.yaw) * direction >= config.angle - 1e-6) {
+        const yaw = finish.yaw - direction * config.angle;
         const t = Math.abs(delta) > 1e-6 ? Math.max(0, Math.min(1, (yaw - a.yaw) / delta)) : 0;
         crossing = { yaw, time: a.time + (b.time - a.time) * t };
       }
       // A qualifying suffix can start after the actual turn. Keep looking for that
       // turn briefly instead of inventing a boundary at the release-window edge.
-      if (releasedAt - a.time > SWORD_SWEEP.windowMs + SWORD_SWEEP.releaseGraceMs
-        || (!crossing && releasedAt - a.time > SWORD_SWEEP.windowMs)) break;
+      if (releasedAt - a.time > config.windowMs + config.releaseGraceMs
+        || (!crossing && releasedAt - a.time > config.windowMs)) break;
     }
-    if (!crossing || releasedAt - crossing.time > SWORD_SWEEP.windowMs
-      || movedAt === null || releasedAt - movedAt > SWORD_SWEEP.releaseGraceMs) return null;
+    if (!crossing || releasedAt - crossing.time > config.windowMs
+      || movedAt === null || releasedAt - movedAt > config.releaseGraceMs) return null;
     return { yaw: wrap((crossing.yaw + finish.yaw) / 2), direction, boundary, turned };
   }
 
@@ -122,6 +125,7 @@ export class AttackGestureTracker {
       }
     }
     return { yaw: this.yaw, heldSeconds: this.distance >= DEAD_ZONE ? Math.max(0, (now - this.start) / 1000) : 0, sweepCount, sweepYaw,
+      reaperTurn: this.distance >= DEAD_ZONE && this.samples.length > 1 && !!this.endingArc(this.samples.length - 1, now, REAPER_TURN),
       leap: this.leap, distance: this.distance, aimed: this.distance >= DEAD_ZONE };
   }
 }

@@ -166,3 +166,45 @@ test('centre cancels armed leap and charge, then starts a fresh aim without lift
   g.sample(Math.PI, 1, 3200); g.sample(0, 1, 3400);
   assert.equal(g.snapshot(3400).leap, true);
 });
+
+test('reaper final 300-degree turn recognizes both directions across wrap within 1.5 s', () => {
+  for (const direction of [-1, 1]) {
+    const g = new AttackGestureTracker(); g.begin(0);
+    arc(g, 170, 170 + 300 * direction, 0, 1500);
+    assert.equal(g.snapshot(1500).reaperTurn, true);
+  }
+});
+
+test('reaper rejects short turns, slow turns and a deliberate final reversal', () => {
+  for (const [degrees, duration] of [[299, 1000], [300, 1600]]) {
+    const g = new AttackGestureTracker(); g.begin(0); arc(g, 0, degrees, 0, duration);
+    assert.equal(g.snapshot(duration).reaperTurn, false);
+  }
+  const g = new AttackGestureTracker(); g.begin(0); arc(g, 0, 330, 0, 1000);
+  arc(g, 330, 300, 1000, 100);
+  assert.equal(g.snapshot(1100).reaperTurn, false);
+});
+
+test('reaper tolerates tiny jitter but never reuses a stale or centre-cancelled turn', () => {
+  const g = new AttackGestureTracker(); g.begin(0); arc(g, 0, 310, 0, 1000);
+  g.sample(rad(307), 1, 1020);
+  assert.equal(g.snapshot(1030).reaperTurn, true);
+  g.sample(rad(307), 1, 1300);
+  assert.equal(g.snapshot(1300).reaperTurn, false);
+  g.sample(rad(307), 0, 1310); g.sample(rad(310), 1, 1320);
+  assert.equal(g.snapshot(1320).reaperTurn, false);
+});
+
+test('reaper cannot assemble 300 degrees out of discontinuous jumps', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  arc(g, 0, 140, 0, 500);
+  g.sample(rad(320), 1, 510);
+  arc(g, 320, 490, 520, 500);
+  assert.equal(g.snapshot(1020).reaperTurn, false);
+});
+
+test('reaper uses final qualifying suffix after earlier direction changes', () => {
+  const g = new AttackGestureTracker(); g.begin(0);
+  arc(g, 0, -70, 0, 500); arc(g, -70, 250, 500, 1400);
+  assert.equal(g.snapshot(1900).reaperTurn, true);
+});

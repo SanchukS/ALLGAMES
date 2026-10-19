@@ -1,10 +1,17 @@
 /** Prototype weapon progression. Levels unlock mechanics, never flat stat inflation. */
-export const PROTOTYPE_WEAPONS = ['sword', 'hammer', 'dagger'] as const;
+export const PROTOTYPE_WEAPONS = ['sword', 'hammer', 'dagger', 'reaper'] as const;
 export type PrototypeWeaponId = typeof PROTOTYPE_WEAPONS[number];
 export const isPrototypeWeapon = (def: string): def is PrototypeWeaponId => (PROTOTYPE_WEAPONS as readonly string[]).includes(def);
 export const weaponLevel = (it: { lvl?: number }) => Math.min(5, Math.max(1, Math.floor(Number.isFinite(it.lvl) ? it.lvl! : 1)));
 export interface WeaponProgress { typeName: string; description: string; levels: { title: string; description: string }[] }
 export const WEAPON_PROGRESS: Record<PrototypeWeaponId, WeaponProgress> = {
+  reaper: { typeName: 'Клинок на цепи', description: 'Жнец — тяжёлый клинок на цепи. Широкие медленные удары и круговой жест стягивает врагов в точку перед героем. Боссы не поддаются притягиванию и казни.', levels: [
+    { title: 'Основной удар', description: '200% урона персонажа · 0,5 удара/с · сектор 160°, радиус 3,5 м.' },
+    { title: 'Сбор душ', description: 'Проведи пальцем вокруг центра области атаки дугу не менее 300° за 1,5 с и отпусти: притяни до 6 ближайших обычных врагов в радиусе 5 м в точку в 2 м перед героем по направлению отпускания. Перезарядка: 3 обычные атаки Жнецом, попавшие хотя бы по одному врагу; несколько целей за один удар считаются одной атакой.' },
+    { title: 'Длинная цепь', description: 'Радиус притягивания увеличивается до 6 м.' },
+    { title: 'Жатва', description: 'Если за одно применение удалось притянуть больше 3 врагов, казни лишних, начиная с врагов с наименьшим текущим здоровьем. Из притянутых остаются 3. Боссы исключены.' },
+    { title: 'Последняя жатва', description: 'После казни из успешно притянутых врагов остаются не больше 2. Первым погибает враг с наименьшим текущим здоровьем. Можно пробудить оружие.' },
+  ] },
   sword: { typeName: 'Меч', description: 'Точный клинок. Обычный удар поражает ближайшего врага в секторе; жесты открывают широкие разрезы и парирование.', levels: [
     { title: 'Основной удар', description: '100% урона персонажа · 1 удар/с · сектор 140°, радиус 2,3 м.' },
     { title: 'Дуговой разрез', description: 'Быстро проведи пальцем вокруг центра области атаки дугу 90° за последнюю 1 секунду перед отпусканием и отпусти: удар по всем врагам в секторе по центру жеста. Урон обычного удара. Перезарядка: 3 обычных попадания; разрезы не засчитываются.' },

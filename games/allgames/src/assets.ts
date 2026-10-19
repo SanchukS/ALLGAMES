@@ -1,3 +1,4 @@
+import { createReaperModel } from './reaperModel';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -84,6 +85,7 @@ class Assets {
   clips!: CharacterClips;
 
   constructor() {
+    this.sources.set('reaper', createReaperModel());
     // The FBX files point at the artist's local TGA files; we assign textures ourselves. The hunter sets
     // (models/archers) point at `<model>.fbm/<name>_baked`: served from textures/archers when the import found
     // that texture, else a blank (the part keeps its own colour).
@@ -99,13 +101,14 @@ class Assets {
     let done = 0;
     await Promise.all(
       all.map(async (n) => {
+        if (n === 'reaper') { onProgress(++done / all.length); return; }
         const g = await this.fbx.loadAsync(`${BASE}models/${n}.fbx`);
         this.sources.set(n, g);
         onProgress(++done / all.length);
       }),
     );
     this.prepareClips();
-    for (const n of names) this.prepareModel(n);
+    for (const n of names) if (n !== 'reaper') this.prepareModel(n);
   }
 
   /** Loads models on demand (the hunter sets: ~60 files, too many for the start-up load); already loaded ones are skipped. */
@@ -348,6 +351,7 @@ class Assets {
 
   /** Deep clone (skinned meshes get their own skeletons). Materials stay shared. */
   clone(name: string): THREE.Group {
+    if (name === 'reaper') return createReaperModel();
     const src = this.sources.get(name);
     if (!src) throw new Error('asset not loaded: ' + name);
     return SkeletonUtils.clone(src) as THREE.Group;

@@ -257,3 +257,22 @@ test('one pointer cannot capture both weapon circles', () => {
   assert.equal(input.attackState(0).holdingAttack, true);
   assert.equal(input.attackState(1).holdingAttack, false);
 });
+
+test('full circle through real secondary input releases a reaper pull only in its own slot', t => {
+  let now = 0; t.mock.method(performance, 'now', () => now);
+  const { input, area } = setup(); input.setAttackWeapon(1, 'Жнец');
+  const attack = area.children[2];
+  pointer(attack, 'pointerdown', 3, 50, 50);
+  let x = 50, y = 95;
+  for (let i = 0; i <= 36; i++) {
+    now = i * 30;
+    x = 50 + Math.sin(i * Math.PI / 18) * 45;
+    y = 50 + Math.cos(i * Math.PI / 18) * 45;
+    pointer(attack, 'pointermove', 3, x, y);
+  }
+  pointer(attack, 'pointerup', 3, x, y);
+  const gesture = input.consumeAttackGesture(1)!;
+  assert.equal(gesture.reaperTurn, true);
+  assert.equal(planWeaponAttack('reaper', 2, gesture, true, true)?.kind, 'pull');
+  assert.equal(input.consumeAttackGesture(0), null);
+});

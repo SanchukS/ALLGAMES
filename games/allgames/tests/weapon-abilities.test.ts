@@ -80,3 +80,15 @@ test('centre release never casts any weapon or hammer ability, regardless of sta
     assert.equal(planWeaponAttack(def, 5, gesture({ aimed: false, leap: true, sweepCount: 2, heldSeconds: 10 }), true, true), null);
   }
 });
+
+test('reaper pull requires level 2, ready first ability and a final turn; deals no direct damage', () => {
+  const g = gesture({ reaperTurn: true });
+  const pull = planWeaponAttack('reaper', 2, g, true, false)!;
+  assert.equal(pull.kind, 'pull'); assert.equal(pull.damageScale, 0); assert.equal(pull.yaw, g.yaw);
+  assert.equal(planWeaponAttack('reaper', 1, g, true, true)?.kind, 'normal');
+  assert.equal(planWeaponAttack('reaper', 5, g, false, true)?.kind, 'normal');
+  assert.equal(planWeaponAttack('reaper', 5, gesture(), true, true)?.kind, 'normal');
+  assert.equal(planWeaponAttack('reaper', 5, gesture({ reaperTurn: false }), true, true)?.kind, 'normal');
+  assert.equal(planWeaponAttack('reaper', 5, gesture({ reaperTurn: true, aimed: false }), true, true), null);
+  assert.equal(planWeaponAttack('sword', 5, g, true, true)?.kind, 'normal');
+});

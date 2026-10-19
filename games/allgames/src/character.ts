@@ -1,3 +1,4 @@
+import { aimReaperModel, castReaperModel, updateReaperModel } from './reaperModel';
 import * as THREE from 'three';
 import { HIT_FLASH, applyHitFlash } from './hitflash';
 import { SKINS, assets } from './assets';
@@ -383,6 +384,7 @@ export class Character {
 
   /** Starts an attack swing. `impactAt` (s) is when the damage frame should land. Returns how long the swing plays (s). */
   attack(anim: AttackAnim, period: number, impactAt: number) {
+    this.reaperCast(0, Math.min(period, impactAt * 2));
     const clipImpact = ATTACK_HIT[anim];
     let a = this.attackU[anim];
     if (a === this.current && this.atkW > 0) {
@@ -412,8 +414,14 @@ export class Character {
 
   /** Procedural swing of one hand (no clip): the blow lands `impactAt` s after the start. */
   swing(kind: SwingKind, hand: 0 | 1, period: number, impactAt: number) {
+    this.reaperCast(hand, Math.min(period, impactAt * 2));
     this.swinger.start(kind, hand, Math.min(period, impactAt * 2.4), impactAt);
   }
+
+  /** Procedural chain visual: optional combat hook for a long cast or ready spin. */
+  reaperCast(hand: 0 | 1, duration: number) { castReaperModel(hand === 0 ? this.weapon : this.weaponL, duration); }
+
+  reaperAim(hand: 0 | 1, active: boolean, ready = false) { aimReaperModel(hand === 0 ? this.weapon : this.weaponL, active, ready); }
 
   hit() {
     this.flashT = HIT_FLASH;
@@ -464,6 +472,8 @@ export class Character {
       if (this.orbCore) this.orbCore.rotation.y += dt * 1.5;
     }
     if (!animate) return;
+    updateReaperModel(this.weapon, dt);
+    updateReaperModel(this.weaponL, dt);
     if (!this.dead) {
       const target = moving ? 1 : 0;
       this.move += (target - this.move) * Math.min(1, dt * 10);

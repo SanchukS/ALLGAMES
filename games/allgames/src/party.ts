@@ -44,7 +44,7 @@ export interface ClassDef {
 export const CLASSES: Record<HeroClass, ClassDef> = {
   warrior: {
     name: 'Воин', icon: 'shield', color: ['#ff7a6a', '#c0352c'], key: 'Digit1',
-    weapons: ['sword', 'hammer', 'dagger'], off: [], offName: 'Оружие 2',
+    weapons: ['sword', 'hammer', 'dagger', 'reaper'], off: [], offName: 'Оружие 2',
   },
   hunter: {
     name: 'Охотник', icon: 'bow', color: ['#8fe05a', '#3f9a2c'], key: 'Digit2',
@@ -82,7 +82,7 @@ export function weaponClass(def: string): HeroClass | null {
 
 /** Whether weapon def `def` can drop: it belongs to a class and is not a fixed class item (ClassDef.fixedOff). */
 export function droppable(def: string) {
-  return ['sword', 'hammer', 'dagger'].includes(def);
+  return ['sword', 'hammer', 'dagger', 'reaper'].includes(def);
 }
 
 /** Body part on the hero → part file of the hunter sets. */

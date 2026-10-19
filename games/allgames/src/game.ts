@@ -107,6 +107,7 @@ class Prop extends Unit {
 export class Game {
   readonly scene = new THREE.Scene();
   private attackPreviews = [new AttackPreview(this.scene), new AttackPreview(this.scene, 0xd5b0ff)];
+  private reaperPulls: { t: number; level: number; targets: { mob: Mob; from: THREE.Vector3; to: THREE.Vector3; blocked: boolean }[]; center: THREE.Vector3; lines: THREE.Line[] }[] = [];
   private activeAttackSlot: 0 | 1 = 0;
   private weaponEffects = new WeaponEffects(this.scene);
   private abilityCharges = new Map<number, AbilityCharges>();
@@ -561,6 +562,7 @@ export class Game {
     if (this.blockers.some((b) => b.until <= this.time)) this.blockers = this.blockers.filter((b) => b.until > this.time);
     this.updateHero(dt);
     this.updateMobs(dt);
+    this.updateReaperPulls(dt);
     this.updatePet(dt);
     this.updateProps(dt);
     this.updateRespawns();
@@ -718,6 +720,8 @@ export class Game {
     for (const slot of [0, 1] as const) {
       const it = this.save.weapons[slot];
       const preview = this.attackPreviews[slot];
+      this.hero.reaperAim(slot, !!it && it.def === 'reaper' && states[slot].aiming && !this.cut,
+        !!it && weaponLevel(it) >= 2 && this.chargesFor(it).remaining[0] === 0 && !!states[slot].gesture?.reaperTurn);
       if (!it || WEAPONS[it.def].guard || WEAPONS[it.def].orb) { preview.hide(); continue; }
       const w = WEAPONS[it.def];
       const state = states[slot];
@@ -729,10 +733,10 @@ export class Game {
         const distance = Math.hypot(at.x - p.x, at.z - p.z) / (weaponLevel(it) >= 5 ? 7 : 5);
         plan.damageScale = plan.areaScale = 1 + distance;
       }
-      const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1);
+      const radius = plan?.kind === 'pull' ? (weaponLevel(it) >= 3 ? 6 : 5) : (w.range + STRIKE_PAD) * Math.sqrt(plan?.areaScale ?? 1);
       const previewYaw = plan?.yaw ?? state.aimYaw;
       const center = this.weaponAttackCenter(at, w.id, plan?.kind ?? 'normal', previewYaw, radius);
-      preview.update(center, previewYaw, radius, w.shape === 'circle' ? 360 : w.arc,
+      preview.update(center, previewYaw, radius, plan?.kind === 'pull' || w.shape === 'circle' ? 360 : w.arc,
         !this.cut && this.input.enabled && state.holdingAttack && (!!plan || state.aiming), this.hands[slot].atkCd <= 0);
     }
 
@@ -810,12 +814,12 @@ export class Game {
       h.yaw = plan.yaw;
       h.aim = this.aimTarget(plan.yaw, w.range, w.shape, w.arc, w.id === 'hammer' ? w.range + STRIKE_PAD : 0);
       this.hero.facing = plan.yaw;
-      if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge') charges.use(0);
+      if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge' || plan.kind === 'pull') charges.use(0);
       if (plan.kind === 'leap') charges.use(1);
       h.combo++;
       h.lastSwing = this.time;
       // the cast clip's release is late (1.13 s), so staves aren't capped: a cap would play it 3-5x too fast
-      const impactAt = w.staff ? period * 0.4 : Math.min(0.42, period * 0.4);
+      const impactAt = plan.kind === 'pull' ? .25 : it.def === 'reaper' ? .4 : w.staff ? period * 0.4 : Math.min(0.42, period * 0.4);
       h.impactAt = impactAt;
       if (plan.kind === 'leap') {
         const from = this.hero.position.clone().setY(0);
@@ -830,7 +834,8 @@ export class Game {
         // capped so the hit lands before the next swing resets h.impact
         h.flight = Math.min((h.aim?.pos.distanceTo(this.hero.position) ?? w.range) / STAFF_BOLT_SPEED, period * 0.5);
       }
-      if (w.shot) {
+      if (plan.kind === 'pull') this.hero.swing('slashRL', h.i, .9, .25);
+      else if (w.shot) {
         // the bow arm points at the target, the other one draws the string
         this.hero.swing('aim', 1, period, impactAt);
         this.hero.swing('draw', 0, period, impactAt);
@@ -897,7 +902,8 @@ export class Game {
       if (!weapon) continue;
       const charge = this.chargesFor(weapon);
       const text = [0, 1].map(i => weaponLevel(weapon) < (i ? 4 : 2) ? '×' : charge.remaining[i] > 0 ? String(charge.remaining[i]) : '✓');
-      this.input.setAttackStatus(hand, `I: ${text[0]} · II: ${text[1]}`);
+      const pullReady = weapon.def === 'reaper' && weaponLevel(weapon) >= 2 && charge.remaining[0] === 0 && this.input.attackState(hand).gesture?.reaperTurn;
+      this.input.setAttackStatus(hand, pullReady ? 'ПРИТЯГИВАНИЕ ГОТОВО' : `I: ${text[0]} · II: ${text[1]}`);
     }
     const stacks = this.target instanceof Mob ? this.daggerStacks.get(this.target)?.get(it.uid) ?? 0 : 0;
     for (const slot of [0, 1] as const) {
@@ -925,9 +931,10 @@ export class Game {
     const w = WEAPONS[it.def];
     const plan = h.plan ?? { kind: 'normal', yaw: h.yaw, damageScale: 1, areaScale: 1, distance: 0 };
     const level = h.level;
+    if (plan.kind === 'pull') { this.startReaperPull(plan.yaw, level); return 0; }
     if (second) this.hero.swing('slashLR', h.i, 0.25, 0.05);
     const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan.areaScale);
-    const area = plan.kind !== 'normal';
+    const area = plan.kind !== 'normal' || it.def === 'reaper';
     const p = this.hero.position;
     const center = this.weaponAttackCenter(p, it.def, plan.kind, plan.yaw, radius);
     const ahead = it.def === 'hammer' && plan.kind !== 'leap' ? radius : 0;
@@ -937,10 +944,11 @@ export class Game {
     if (!area) targets = [targets.find(u => u instanceof Mob && !u.passive) ?? targets[0]].filter((u): u is Unit => !!u);
     const parryTargets: Mob[] = [];
     let hits = 0;
+    let ordinaryEnemyHit = false;
     sfx.swing();
     if (area) {
       this.weaponEffects.slash(center, plan.yaw, radius, w.shape === 'circle' ? 360 : w.arc,
-        it.def === 'hammer' ? 0xffb85b : level >= 3 ? 0x99faff : 0xe9f7ff, level >= 3);
+        it.def === 'hammer' ? 0xffb85b : it.def === 'reaper' ? 0xafffd1 : level >= 3 ? 0x99faff : 0xe9f7ff, level >= 3);
       if (it.def === 'hammer') {
         this.waves.add(center, radius, 0xffc06a, 0.28);
         this.particles.burst(center.clone().setY(0.3), 0xd0a26d, 18, 0.13, 7, 0.4);
@@ -966,7 +974,8 @@ export class Game {
       hits++;
       fight.hits++;
       if (!m.passive) {
-        if (!area) this.chargesFor(it).normalHit();
+        if (it.def === 'reaper') ordinaryEnemyHit = true;
+        else if (!area) this.chargesFor(it).normalHit();
         if (it.def === 'dagger' && level >= 2 && m.alive) {
           let byWeapon = this.daggerStacks.get(m);
           if (!byWeapon) { byWeapon = new Map(); this.daggerStacks.set(m, byWeapon); }
@@ -982,6 +991,7 @@ export class Game {
         }
       }
     }
+    if (ordinaryEnemyHit) this.chargesFor(it).normalHit();
     if (parryTargets.length) {
       const s = this.stats;
       const pool = h.parryPool ??= { left: (20 + s.power) * s.powerMul * (level >= 5 ? 2 : 1) };
@@ -992,6 +1002,72 @@ export class Game {
       this.weaponEffects.slash(p, plan.yaw, 1.15, 140, 0xffdc70, true);
     }
     return hits;
+  }
+
+  /** Bosses and minibosses never move or count towards the reaper execution. */
+  private canReap(m: Mob) {
+    return m.hittable && !m.passive && !m.def.boss && m.mark !== 'boss' && m.mark !== 'mini';
+  }
+
+  private startReaperPull(yaw: number, level: number) {
+    const origin = this.hero.position.clone().setY(0);
+    const radius = level >= 3 ? 6 : 5;
+    const center = origin.clone().add(new THREE.Vector3(Math.sin(yaw) * 2, 0, Math.cos(yaw) * 2));
+    this.world.collide(center, .4); this.collideBlockers(center, .4);
+    const busy = new Set(this.reaperPulls.flatMap(p => p.targets.map(t => t.mob)));
+    const selected = this.mobs.filter(m => this.canReap(m) && !busy.has(m) && m.pos.distanceTo(origin) <= radius)
+      .sort((a, b) => a.pos.distanceToSquared(origin) - b.pos.distanceToSquared(origin)).slice(0, 6);
+    const targets = selected.map((mob, i) => {
+      const to = center.clone().add(new THREE.Vector3(Math.sin(i * Math.PI / 3) * .35, 0, Math.cos(i * Math.PI / 3) * .35));
+      this.world.collide(to, mob.radius); this.collideBlockers(to, mob.radius);
+      mob.impact = -1; mob.casting = 0; mob.animDelay = -1;
+      mob.knock.set(0, 0, 0); mob.stun = Math.max(mob.stun, .55);
+      return { mob, from: mob.pos.clone(), to, blocked: false };
+    });
+    const lines = targets.map(t => {
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([center.clone().setY(.8), t.from.clone().setY(.8)]), new THREE.LineBasicMaterial({ color: 0xc6f0d0 }));
+      this.scene.add(line); return line;
+    });
+    this.reaperPulls.push({ t: 0, level, targets, center, lines });
+    this.weaponEffects.slash(origin, yaw, radius, 360, 0x9ceabb, true);
+  }
+
+  private updateReaperPulls(dt: number) {
+    for (let i = this.reaperPulls.length - 1; i >= 0; i--) {
+      const pull = this.reaperPulls[i]; pull.t += dt;
+      const fraction = Math.min(1, pull.t / .45);
+      for (let j = 0; j < pull.targets.length; j++) {
+        const t = pull.targets[j], m = t.mob;
+        if (!this.dead && this.canReap(m) && !t.blocked) {
+          const desired = t.from.clone().lerp(t.to, fraction);
+          // Small steps respect walls and gates even for long pulls.
+          const steps = Math.max(1, Math.ceil(m.pos.distanceTo(desired) / .15));
+          const from = m.pos.clone();
+          for (let step = 1; step <= steps; step++) {
+            const next = from.clone().lerp(desired, step / steps);
+            const checked = next.clone();
+            this.world.collide(checked, m.radius); this.collideBlockers(checked, m.radius);
+            if (inCamp(next.x, next.z, m.radius) || checked.distanceToSquared(next) > .0025) { t.blocked = true; break; }
+            m.pos.copy(checked);
+          }
+          m.knock.set(0, 0, 0); m.stun = Math.max(m.stun, .12);
+        }
+        pull.lines[j].geometry.setFromPoints([pull.center.clone().setY(.8), m.pos.clone().setY(.8)]);
+      }
+      if (fraction < 1 && !this.dead) continue;
+      const arrived = pull.targets.filter(t => !this.dead && !t.blocked && this.canReap(t.mob) && t.mob.pos.distanceTo(t.to) < .25)
+        .map(t => t.mob).sort((a, b) => a.hp - b.hp);
+      if (pull.level >= 4) {
+        const excess = Math.max(0, arrived.length - (pull.level >= 5 ? 2 : 3));
+        for (const m of arrived.slice(0, excess)) {
+          this.fx.spawn(m.pos.clone().setY(2), 'ЖАТВА', 'dmg', .7, { color: '#baffcf' });
+          this.weaponEffects.slash(m.pos, 0, .8, 160, 0xafffd1, true);
+          m.hp = 0; this.killMob(m);
+        }
+      }
+      for (const line of pull.lines) { line.removeFromParent(); line.geometry.dispose(); (line.material as THREE.Material).dispose(); }
+      this.reaperPulls.splice(i, 1);
+    }
   }
 
   /** A blow on mob `def`: it may dodge (dmg 0, `fx` 'miss') or take a crit (`fx` 'crit'). */
@@ -2381,8 +2457,11 @@ export class Game {
   /** Fresh chains. */
   private resetHands() {
     this.input.reset();
+    this.hero.reaperAim(0, false); this.hero.reaperAim(1, false);
     this.attackPreviews.forEach(preview => preview.hide());
     this.parries.clear();
+    for (const pull of this.reaperPulls) for (const line of pull.lines) { line.removeFromParent(); line.geometry.dispose(); (line.material as THREE.Material).dispose(); }
+    this.reaperPulls = [];
     this.leap = null;
     this.hero.position.y = 0;
     for (const h of this.hands) Object.assign(h, newHand(h.i));

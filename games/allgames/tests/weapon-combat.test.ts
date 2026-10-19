@@ -274,3 +274,87 @@ test('all prototype weapons animate the attacking hand instead of a right-handed
     }
   }
 });
+
+test('reaper ordinary strike splashes but recharges only once per successful attack', () => {
+  const { g, h, calls, item } = setup('reaper', 2);
+  g.units = [enemy(-.3, 1), enemy(.3, 1), enemy(0, 2)];
+  g.chargesFor(item).use(0);
+  assert.equal(g.prototypeStrike(h), 3);
+  assert.equal(calls.length, 3);
+  assert.equal(g.chargesFor(item).remaining[0], 2);
+});
+
+function reaperSetup(level: number) {
+  const { g } = setup('reaper', level);
+  const killed: any[] = [];
+  Object.assign(g, { reaperPulls: [], scene: new THREE.Scene(), world: { collide: noop }, collideBlockers: noop,
+    killMob: (m: any) => { killed.push(m); m.state = 'dead'; },
+  });
+  return { g, killed };
+}
+
+test('reaper pulls six nearest enemies forward, excludes bosses, executes lowest HP excess per cast', () => {
+  for (const level of [2, 4, 5]) {
+    const { g, killed } = reaperSetup(level);
+    const mobs = Array.from({ length: 7 }, (_, i) => enemy((i - 3) * .3, 3));
+    mobs.forEach((m, i) => m.hp = 100 + i);
+    const boss = enemy(0, .5); boss.def.boss = {};
+    g.mobs = [...mobs, boss];
+    g.startReaperPull(Math.PI / 2, level);
+    const chosen = g.reaperPulls[0].targets.map((t: any) => t.mob);
+    assert.equal(chosen.length, 6); assert.equal(chosen.includes(boss), false);
+    g.updateReaperPulls(.45);
+    assert.equal(killed.length, level === 2 ? 0 : level === 4 ? 3 : 4);
+    assert.ok(chosen.every((m: any) => m.pos.x > 1.5 && Math.abs(m.pos.z) < .5));
+    assert.equal(boss.pos.z, .5);
+    assert.deepEqual(killed, [...chosen].sort((a: any,b: any) => (100 + mobs.indexOf(a)) - (100 + mobs.indexOf(b))).slice(0, killed.length));
+    assert.equal(g.reaperPulls.length, 0);
+    assert.equal(g.scene.children.length, 0);
+  }
+});
+
+test('blocked pull does not pass a wall and never contributes to execution count', () => {
+  const { g, killed } = reaperSetup(5);
+  g.mobs = Array.from({ length: 6 }, (_, i) => enemy(i * .05, 4));
+  g.world.collide = (p: THREE.Vector3) => { if (p.z < 3 && p.z > 2.5) p.z = 3; };
+  g.startReaperPull(0, 5);
+  g.updateReaperPulls(.45);
+  assert.equal(killed.length, 0);
+  assert.ok(g.mobs.every((m: any) => m.pos.z >= 3));
+});
+
+test('reaper execution counts each cast separately and never includes minibosses', () => {
+  const { g, killed } = reaperSetup(4);
+  const mini = enemy(0, 1); mini.def.rank = 'mini';
+  g.mobs = [enemy(-.2, 3), enemy(.2, 3), mini];
+  g.startReaperPull(0, 4); g.updateReaperPulls(.45);
+  assert.equal(killed.length, 0); assert.equal(mini.pos.z, 1);
+  // Previous survivors are out of range: they do not count towards this cast.
+  g.mobs[0].pos.set(20, 0, 20); g.mobs[1].pos.set(21, 0, 20);
+  g.mobs.push(enemy(-.2, 3), enemy(.2, 3));
+  g.startReaperPull(0, 4); g.updateReaperPulls(.45);
+  assert.equal(killed.length, 0);
+});
+
+
+test('reaper cannot pull enemies into the protected camp or execute blocked arrivals', () => {
+  const { g, killed } = reaperSetup(5);
+  g.hero.position.set(0, 0, -36);
+  g.mobs = Array.from({ length: 6 }, (_, i) => enemy(i * .1, -33));
+  g.startReaperPull(Math.PI, 5); g.updateReaperPulls(.45);
+  assert.equal(killed.length, 0);
+  assert.ok(g.mobs.every((m: any) => Math.hypot(m.pos.x, m.pos.z + 52) >= 16.5 + m.radius));
+});
+
+test('reaper full-turn release consumes pull cooldown and starts pull at cast impact without strike damage', () => {
+  const { g, h, calls, item } = setup('reaper', 4);
+  const casts: any[] = [];
+  g.startReaperPull = (...args: any[]) => casts.push(args);
+  g.updateHand(h, .01, { yaw: .8, heldSeconds: 1, sweepCount: 1, sweepYaw: 0, leap: false, distance: 1, aimed: true, reaperTurn: true });
+  assert.equal(h.plan.kind, 'pull');
+  assert.equal(g.chargesFor(item).remaining[0], 3);
+  assert.equal(casts.length, 0);
+  g.updateHand(h, .3, null);
+  assert.deepEqual(casts, [[.8, 4]]);
+  assert.equal(calls.length, 0);
+});

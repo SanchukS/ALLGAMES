@@ -1,7 +1,7 @@
 import type { AttackGesture } from './attackGesture';
 
 export interface AttackPlan {
-  kind: 'normal' | 'sweep' | 'doubleSweep' | 'charge' | 'leap';
+  kind: 'normal' | 'sweep' | 'doubleSweep' | 'charge' | 'leap' | 'pull';
   yaw: number;
   damageScale: number;
   /** Area multiplier, not radius multiplier: radius grows by sqrt(areaScale). */
@@ -14,6 +14,9 @@ export interface AttackPlan {
 export function planWeaponAttack(def: string, level: number, gesture: AttackGesture, firstReady: boolean, secondReady: boolean): AttackPlan | null {
   if (!gesture.aimed) return null; // Releasing in the centre never casts, including hammer charge.
   const normal: AttackPlan = { kind: 'normal', yaw: gesture.yaw, damageScale: 1, areaScale: 1, distance: 0 };
+  if (def === 'reaper' && level >= 2 && firstReady && gesture.reaperTurn) {
+    return { ...normal, kind: 'pull', damageScale: 0 };
+  }
   if (def === 'hammer') {
     if (level >= 4 && secondReady && gesture.leap && gesture.aimed) {
       const distance = Math.max(0, Math.min(1, gesture.distance));

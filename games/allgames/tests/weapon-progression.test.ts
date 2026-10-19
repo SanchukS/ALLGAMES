@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newSave, loadSave, writeSave } from '../src/save';
-import { weaponDamage, normalizeItem, makeItem, itemLines } from '../src/items';
+import { weaponDamage, normalizeItem, makeItem, itemLines, itemModel } from '../src/items';
 import { classAcceptsSlot } from '../src/party';
 import { weaponLevel } from '../src/weaponProgression';
 
@@ -11,18 +11,18 @@ Object.assign(globalThis, { localStorage: {
   setItem: (key: string, value: string) => storage.set(key, value),
 } });
 
-test('new game gives all three test weapons at level one', () => {
+test('new game gives all four test weapons at level one', () => {
   for (const faction of ['human', 'orc'] as const) {
     const save = newSave(faction);
     const items = [...save.weapons.filter((it) => it !== null), ...save.bag];
-    assert.deepEqual(items.map((it) => it.def).sort(), ['dagger', 'hammer', 'sword']);
+    assert.deepEqual(items.map((it) => it.def).sort(), ['dagger', 'hammer', 'reaper', 'sword']);
     assert.equal(save.weapons[1]?.def, 'dagger');
     assert.ok(items.every((it) => it.lvl === 1));
   }
 });
 
 test('weapon damage is a percentage of character damage, independent of rarity, level and sharpening', () => {
-  for (const [def, expected] of [['sword', 60], ['dagger', 36], ['hammer', 108]] as const) {
+  for (const [def, expected] of [['sword', 60], ['dagger', 36], ['hammer', 108], ['reaper', 120]] as const) {
     for (const rarity of [0, 5]) for (const level of [1, 5]) {
       const item = makeItem('weapon', def, rarity, level);
       item.sharpen = 10;
@@ -110,9 +110,30 @@ test('legacy shield is kept in bag and empty secondary gets a weapon only once',
 
 test('warrior allows every prototype weapon in both slots without allowing shields or mage items', () => {
   for (const slot of [0, 1] as const) {
-    for (const def of ['sword', 'dagger', 'hammer']) assert.equal(classAcceptsSlot('warrior', def, slot), true);
+    for (const def of ['sword', 'dagger', 'hammer', 'reaper']) assert.equal(classAcceptsSlot('warrior', def, slot), true);
     for (const def of ['shield_tower', 'staff_fire', 'orb_fury']) assert.equal(classAcceptsSlot('warrior', def, slot), false);
   }
   assert.equal(classAcceptsSlot('mage', 'orb_fury', 1), true);
   assert.equal(classAcceptsSlot('mage', 'orb_fury', 0), false);
+});
+
+
+test('reaper is added to existing saves once without changing equipped weapons', () => {
+  const save = newSave('human');
+  save.bag = save.bag.filter((it) => it.def !== 'reaper');
+  const equipped = structuredClone(save.weapons);
+  writeSave(save);
+  const loaded = loadSave()!;
+  assert.deepEqual(loaded.weapons, equipped);
+  assert.equal(loaded.bag.filter((it) => it.def === 'reaper').length, 1);
+  const reaper = loaded.bag.find((it) => it.def === 'reaper')!;
+  reaper.lvl = 5; reaper.awakened = true;
+  loaded.bag = loaded.bag.filter((it) => it.uid !== reaper.uid);
+  loaded.bag.push(loaded.weapons[1]!);
+  loaded.weapons[1] = reaper;
+  writeSave(loaded);
+  const again = loadSave()!;
+  assert.deepEqual(again.weapons[1], reaper);
+  assert.equal(again.bag.filter((it) => it.def === 'reaper').length, 0);
+  for (const faction of ['human', 'orc'] as const) assert.equal(itemModel(reaper, faction), 'reaper');
 });

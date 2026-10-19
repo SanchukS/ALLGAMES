@@ -111,6 +111,10 @@ const staffTiers = (el: StaffElement) => RARITY_IDS.map((r) => `staff_${el}_${r}
 export const casterModel = (faction: FactionId, rarity: number) => `casters/${faction}_caster_${RARITY_IDS[rarity]}`;
 
 export const WEAPONS: Record<string, WeaponDef> = {
+  reaper: {
+    id: 'reaper', name: 'Жнец', type: 'slash', dmgMul: 2, aps: 0.5, shape: 'arc', arc: 160, range: 3.5,
+    swing: ['slashRL', 'slashLR'], anim: 'SwordAttack', model: { human: 'reaper', orc: 'reaper' }, icon: '⛓️',
+  },
   sword: {
     id: 'sword', name: 'Меч', type: 'slash', dmgMul: 1, aps: 1, shape: 'arc', arc: 140, range: 2.3,
     swing: ['slashRL', 'slashLR'], anim: 'SwordAttack', model: { human: 'sword_human_knight', orc: 'sword_orc_warrior' }, icon: '🗡️', single: true,
