@@ -1,3 +1,4 @@
+import { isHarvestSynergy } from './synergy';
 import * as THREE from 'three';
 import {
   FACTIONS, fmtOrb, WEAPONS, ZONE_FOES,
@@ -344,10 +345,12 @@ export class UI {
    */
   weapons(items: (Item | null)[], dmg: (it: Item) => number, equip: Partial<Record<ArmorSlot, Item>>, w: Wearer, pet: PetDef | null = null) {
     const box = $('weapons');
+    const harvest = isHarvestSynergy(items);
     box.innerHTML = [0, 1].map((i) => {
       if (i === 1 && pet) return petCellHtml(pet, `data-pet title="Питомец: ${pet.name}"`, 'wslot active');
       const it = items[i];
-      const title = !it ? '' : WEAPONS[it.def].guard ? `title="${WEAPONS[it.def].name}"` : `title="${WEAPONS[it.def].name}: ${Math.round(dmg(it))} урона"`;
+      const name = it && harvest && it.def === 'sword' ? 'Серп' : it ? WEAPONS[it.def].name : '';
+      const title = !it ? '' : WEAPONS[it.def].guard ? `title="${WEAPONS[it.def].name}"` : `title="${name}: ${Math.round(dmg(it))} урона"`;
       return cellHtml(it, `data-w="${i}" ${title}`, 'sword', `<span class="wtag ${it ? 'on' : ''}">${i + 1}</span>`, it ? 'wslot active' : 'wslot', w);
     }).join('');
     const side = (ids: ArmorSlot[]) => ids.map((id) => {

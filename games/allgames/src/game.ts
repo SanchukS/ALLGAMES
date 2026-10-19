@@ -1,3 +1,5 @@
+import { isHarvestSynergy } from './synergy';
+import { HarvestHelpers } from './harvestHelpers';
 import { AbilityCharges, daggerHit, planWeaponAttack, type AttackPlan } from './weaponAbilities';
 import { isPrototypeWeapon, weaponLevel } from './weaponProgression';
 import type { AttackGesture } from './attackGesture';
@@ -106,6 +108,8 @@ class Prop extends Unit {
 
 export class Game {
   readonly scene = new THREE.Scene();
+  private harvestHelpers = new HarvestHelpers<{ position: THREE.Vector3; dead: boolean; mob: Mob }>(this.scene);
+  private get harvestSynergy() { return isHarvestSynergy(this.save.weapons); }
   private attackPreviews = [new AttackPreview(this.scene), new AttackPreview(this.scene, 0xd5b0ff)];
   private reaperPulls: { t: number; level: number; targets: { mob: Mob; from: THREE.Vector3; to: THREE.Vector3; blocked: boolean }[]; center: THREE.Vector3; lines: THREE.Line[] }[] = [];
   private activeAttackSlot: 0 | 1 = 0;
@@ -451,7 +455,7 @@ export class Game {
   handModels(): [string | null, string | null] {
     // a debug set (Game.debugSet) shows the equipped weapons at the set's quality
     const r = this.debugLooks[this.heroClass];
-    const m = (it: Item | null) => (it ? itemModel(r >= 0 ? { ...it, rarity: r } : it, this.faction) : null);
+    const m = (it: Item | null) => (it ? this.harvestSynergy && it.def === 'sword' ? 'synergy_sickle' : itemModel(r >= 0 ? { ...it, rarity: r } : it, this.faction) : null);
     // the mage's orb is not held: it floats over the shoulder (Character.setOrb)
     const left = this.save.weapons[1];
     return [m(this.save.weapons[0]), left && WEAPONS[left.def].orb ? null : m(left)];
@@ -563,6 +567,7 @@ export class Game {
     this.updateHero(dt);
     this.updateMobs(dt);
     this.updateReaperPulls(dt);
+    this.updateHarvestHelpers(dt);
     this.updatePet(dt);
     this.updateProps(dt);
     this.updateRespawns();
@@ -801,20 +806,22 @@ export class Game {
     if (w.guard || w.orb) { h.combo = 0; return; }
     h.atkCd -= dt;
     if (h.second >= 0) {
+      const previous = h.second;
       h.second -= dt;
+      if (previous > .2 && h.second <= .2) this.hero.swing('slashLR', h.i, .5, .2);
       if (h.second < 0) this.prototypeStrike(h, true);
     }
     const period = 1 / w.aps;
     const charges = this.chargesFor(it);
     const plan = attack && planWeaponAttack(it.def, weaponLevel(it), attack, charges.remaining[0] === 0, charges.remaining[1] === 0);
-    if (plan && h.atkCd <= 0 && !this.leap) {
+    if (plan && h.atkCd <= 0 && h.second < 0 && !this.leap) {
       h.plan = plan;
       h.level = weaponLevel(it);
       h.parryPool = null; h.parryFocus = null;
       h.yaw = plan.yaw;
       h.aim = this.aimTarget(plan.yaw, w.range, w.shape, w.arc, w.id === 'hammer' ? w.range + STRIKE_PAD : 0);
       this.hero.facing = plan.yaw;
-      if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge' || plan.kind === 'pull') charges.use(0);
+      if (plan.kind === 'sweep' || plan.kind === 'doubleSweep' || plan.kind === 'charge' || plan.kind === 'pull') charges.use(0, this.harvestSynergy && it.def === 'hammer' ? 1 : 3);
       if (plan.kind === 'leap') charges.use(1);
       h.combo++;
       h.lastSwing = this.time;
@@ -863,7 +870,7 @@ export class Game {
           this.hero.position.copy(this.leap.to); this.leap = null;
         }
         this.heroStrike(h, h.yaw, h.aim);
-        if (h.plan?.kind === 'doubleSweep') h.second = 0.1;
+        if (h.plan?.kind === 'doubleSweep') h.second = 0.5;
       }
       if (h.impact < 0) { h.bolt = null; h.aim = null; }
     }
@@ -901,19 +908,20 @@ export class Game {
       const weapon = this.save.weapons[hand];
       if (!weapon) continue;
       const charge = this.chargesFor(weapon);
-      const text = [0, 1].map(i => weaponLevel(weapon) < (i ? 4 : 2) ? '×' : charge.remaining[i] > 0 ? String(charge.remaining[i]) : '✓');
+      const text = [0, 1].map(i => this.harvestSynergy && weapon.def === 'sword' && i === 1 ? '—' : weaponLevel(weapon) < (i ? 4 : 2) ? '×' : charge.remaining[i] > 0 ? String(charge.remaining[i]) : '✓');
       const pullReady = weapon.def === 'reaper' && weaponLevel(weapon) >= 2 && charge.remaining[0] === 0 && this.input.attackState(hand).gesture?.reaperTurn;
       this.input.setAttackStatus(hand, pullReady ? 'ПРИТЯГИВАНИЕ ГОТОВО' : `I: ${text[0]} · II: ${text[1]}`);
     }
     const stacks = this.target instanceof Mob ? this.daggerStacks.get(this.target)?.get(it.uid) ?? 0 : 0;
     for (const slot of [0, 1] as const) {
       const dot = this.abilityDots[slot];
-      const locked = level < (slot === 0 ? 2 : 4);
+      const disabledParry = this.harvestSynergy && it.def === 'sword' && slot === 1;
+      const locked = disabledParry || level < (slot === 0 ? 2 : 4);
       const left = it.def === 'dagger' ? 0 : it.def === 'sword' && slot === 1 ? 0 : charges.remaining[slot];
       dot.classList.toggle('locked', locked);
       dot.classList.toggle('cooldown', !locked && left > 0);
       dot.textContent = locked ? '×' : left > 0 ? String(left) : it.def === 'dagger' && slot === 1 ? String(stacks % 10) : '';
-      dot.title = locked ? `Откроется на уровне ${slot === 0 ? 2 : 4}` : left > 0 ? `Обычных попаданий до готовности: ${left}` : it.def === 'dagger' ? `Стаки на цели: ${stacks}` : 'Готово';
+      dot.title = disabledParry ? 'Парирование заменено призывом помощников через разрезы' : locked ? `Откроется на уровне ${slot === 0 ? 2 : 4}` : left > 0 ? `Обычных попаданий до готовности: ${left}` : it.def === 'dagger' ? `Стаки на цели: ${stacks}` : 'Готово';
       dot.setAttribute('aria-label', `Способность ${slot + 1}: ${dot.title}`);
     }
   }
@@ -925,14 +933,14 @@ export class Game {
   }
 
   /** New weapons have no damage type. Ordinary strikes hit only the closest target. */
-  private prototypeStrike(h: Hand, second = false) {
+  private prototypeStrike(h: Hand, _second = false) {
     const it = this.save.weapons[h.i];
     if (!it || !isPrototypeWeapon(it.def)) return 0;
     const w = WEAPONS[it.def];
     const plan = h.plan ?? { kind: 'normal', yaw: h.yaw, damageScale: 1, areaScale: 1, distance: 0 };
     const level = h.level;
     if (plan.kind === 'pull') { this.startReaperPull(plan.yaw, level); return 0; }
-    if (second) this.hero.swing('slashLR', h.i, 0.25, 0.05);
+
     const radius = (w.range + STRIKE_PAD) * Math.sqrt(plan.areaScale);
     const area = plan.kind !== 'normal' || it.def === 'reaper';
     const p = this.hero.position;
@@ -969,7 +977,7 @@ export class Game {
       const wasAttacking = m.impact >= 0 || m.casting > 0 || m.animDelay >= 0;
       const before = m.hp;
       const fight = this.fightOf(m);
-      this.damageMob(m, hit.dmg, hit.tier, it.def === 'hammer' && area ? 9 : 2, hit.fx);
+      this.damageMob(m, hit.dmg, hit.tier, it.def === 'hammer' ? this.harvestSynergy ? 0 : area ? 9 : 2 : 2, hit.fx);
       if (m.hp >= before) continue;
       hits++;
       fight.hits++;
@@ -983,11 +991,12 @@ export class Game {
           this.fx.spawn(m.pos.clone().setY(2.6), `${dagger.stacks} ст.`, 'dmg', 0.5, { color: '#ff9393' });
           if (dagger.finisherMultiplier > 0) this.particles.burst(m.pos.clone().setY(1), 0xff5252, 12, 0.1, 5, 0.3);
         }
-        if (it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
+        if (this.harvestSynergy && it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep') && Math.random() < .2) this.harvestHelpers.summon(m.pos);
+        if (!this.harvestSynergy && it.def === 'sword' && level >= 4 && wasAttacking && m.alive) parryTargets.push(m);
         if (it.def === 'hammer' && area && m.alive) {
           m.stun = Math.max(m.stun, 1);
           m.impact = -1;
-          m.knock.set(m.pos.x - center.x, 0, m.pos.z - center.z).normalize().multiplyScalar(9);
+          if (!this.harvestSynergy) m.knock.set(m.pos.x - center.x, 0, m.pos.z - center.z).normalize().multiplyScalar(9);
         }
       }
     }
@@ -1002,6 +1011,30 @@ export class Game {
       this.weaponEffects.slash(p, plan.yaw, 1.15, 140, 0xffdc70, true);
     }
     return hits;
+  }
+
+  private updateHarvestHelpers(dt: number) {
+    if (!this.harvestSynergy || this.dead) { this.harvestHelpers.clear(); return; }
+    const stats = this.stats;
+    this.harvestHelpers.update(dt, {
+      heroPosition: this.hero.position,
+      characterDamage: (20 + stats.power) * stats.powerMul,
+      enemies: this.mobs.filter(m => m.hittable && !m.passive).map(mob => ({
+        mob, position: mob.pos, get dead() { return !mob.hittable; },
+      })),
+      dealDamage: ({ mob }, damage) => {
+        if (!mob.hittable) return false;
+        const before = mob.hp;
+        this.damageMob(mob, damage, 'normal', 0);
+        if (mob.hp < before) this.fightOf(mob).hits++;
+        return mob.hp < before;
+      },
+      blocked: (x, z) => {
+        const point = new THREE.Vector3(x, 0, z);
+        this.world.collide(point, .2); this.collideBlockers(point, .2);
+        return Math.hypot(point.x - x, point.z - z) > .05;
+      },
+    });
   }
 
   /** Bosses and minibosses never move or count towards the reaper execution. */
@@ -2456,6 +2489,7 @@ export class Game {
 
   /** Fresh chains. */
   private resetHands() {
+    this.harvestHelpers.clear();
     this.input.reset();
     this.hero.reaperAim(0, false); this.hero.reaperAim(1, false);
     this.attackPreviews.forEach(preview => preview.hide());
@@ -2469,6 +2503,7 @@ export class Game {
 
   /** Level controls cancel in-flight moves without refreshing hit-based cooldowns. */
   weaponProgressChanged() {
+    this.dressHero();
     this.resetHands();
     this.persist();
     this.refreshHud(true);
@@ -2551,7 +2586,7 @@ export class Game {
     if (full) {
       for (const slot of [0, 1] as const) {
         const it = this.save.weapons[slot];
-        this.input.setAttackWeapon(slot, it && !WEAPONS[it.def].guard && !WEAPONS[it.def].orb ? itemName(it, this.faction) : null);
+        this.input.setAttackWeapon(slot, it && !WEAPONS[it.def].guard && !WEAPONS[it.def].orb ? this.harvestSynergy && it.def === 'sword' ? 'Серп' : itemName(it, this.faction) : null);
       }
       this.ui.weapons(this.save.weapons, (it) => this.itemDamage(it), this.save.equip, this.wearer, this.petDef);
       this.ui.bagBadge(this.newItems, this.save.bag.length >= BAG_SIZE);

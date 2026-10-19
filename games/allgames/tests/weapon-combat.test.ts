@@ -115,7 +115,7 @@ test('real updateHand schedules two area hits for double sweep, neither recharge
   assert.equal(calls.length, 0);
   g.updateHand(h, .4, null);
   assert.equal(calls.length, 1);
-  g.updateHand(h, .11, null);
+  g.updateHand(h, .51, null);
   assert.equal(calls.length, 2);
   assert.equal(g.chargesFor(item).remaining[0], 3);
   g.updateHand(h, .2, null); assert.equal(calls.length, 2);
@@ -150,7 +150,7 @@ test('double sweep can parry newly attacking enemy on second cut without repleni
     g.hurtHero(30, a.pos, a);
     assert.equal(originalPool.left, 10);
     a.impact = -1; b.impact = .3;
-    g.updateHand(h, .11, null);
+    g.updateHand(h, .51, null);
     assert.equal(g.parries.get(b).pool, originalPool);
     assert.equal(g.parries.get(b).pool.left, 10);
     g.hurtHero(30, b.pos, b);
@@ -357,4 +357,41 @@ test('reaper full-turn release consumes pull cooldown and starts pull at cast im
   g.updateHand(h, .3, null);
   assert.deepEqual(casts, [[.8, 4]]);
   assert.equal(calls.length, 0);
+});
+
+function awakenPair(g: any, item: any) {
+  Object.assign(item, { kind: 'weapon', awakened: true });
+  g.save.weapons[1] = { kind: 'weapon', def: item.def === 'hammer' ? 'sword' : 'hammer', uid: 43, lvl: 5, awakened: true };
+}
+test('harvest sickle rolls once per victim per cut and never parries', () => {
+  const { g, h, item } = setup(); awakenPair(g, item);
+  let summoned = 0; g.harvestHelpers = { summon: () => summoned++ };
+  const a = enemy(), b = enemy(.4, 1); a.impact = b.impact = .3; g.units = [a,b];
+  h.plan.kind = 'doubleSweep';
+  const random = Math.random; Math.random = () => .19;
+  try { g.prototypeStrike(h); g.prototypeStrike(h, true); }
+  finally { Math.random = random; }
+  assert.equal(summoned, 4); assert.equal(g.parries.has(a), false);
+  h.plan.kind = 'normal'; g.prototypeStrike(h); assert.equal(summoned, 4);
+});
+test('harvest hammer charges in one normal hit and does not knock back', () => {
+  const { g, h, item } = setup('hammer'); awakenPair(g, item);
+  const m = enemy(0, 2); g.units = [m];
+  const knocks: number[] = [];
+  g.damageMob = (target: any, damage: number, _tier: string, knock: number) => { target.hp -= damage; knocks.push(knock); };
+  g.updateHand(h, .01, { aimed: true, heldSeconds: 2, yaw: 0, sweepCount: 0, leap: false });
+  assert.equal(g.chargesFor(item).remaining[0], 1);
+  g.updateHand(h, .42, null);
+  assert.deepEqual(knocks, [0]); assert.equal(m.knock.length(), 0); assert.equal(m.stun, 1);
+  h.plan.kind = 'normal'; g.prototypeStrike(h);
+  assert.equal(g.chargesFor(item).remaining[0], 0); assert.deepEqual(knocks, [0, 0]);
+});
+test('double cut waits half a second and animates its return before impact', () => {
+  const { g, h, calls } = setup(); g.units = [enemy()];
+  const swings: unknown[] = []; g.hero.swing = (...args: unknown[]) => swings.push(args);
+  g.updateHand(h, .01, { aimed: true, heldSeconds: 0, yaw: 0, sweepYaw: 0, sweepCount: 2 });
+  g.updateHand(h, .4, null); assert.equal(calls.length, 1);
+  g.updateHand(h, .31, null); assert.equal(calls.length, 1); assert.equal(swings.length, 2);
+  g.updateHand(h, .18, null); assert.equal(calls.length, 1);
+  g.updateHand(h, .02, null); assert.equal(calls.length, 2);
 });

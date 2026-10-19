@@ -1,3 +1,4 @@
+import { isHarvestSynergy } from './synergy';
 import { isPrototypeWeapon, weaponLevel, WEAPON_PROGRESS } from './weaponProgression';
 import * as THREE from 'three';
 import { Character } from './character';
@@ -495,18 +496,28 @@ export class Inventory {
   private showWeaponTip(tip: HTMLElement, src: Source, it: Item) {
     if (!isPrototypeWeapon(it.def)) return;
     const p = WEAPON_PROGRESS[it.def];
+    const harvest = src.at === 'weapon' && isHarvestSynergy(this.game.save.weapons);
+    const harvestWeapon = it.def === 'sword' || it.def === 'hammer';
+    const synergyInfo = harvestWeapon ? `<div class="weapon-description"><strong>${harvest ? '✦ Синергия активна: Серп и молот' : '✦ Синергия: Серп и молот'}</strong><p>Экипируй меч и молот 5-го уровня и пробуди оба оружия.</p><p>Меч становится серпом: парирование отключается. За каждого врага, задетого разрезом, шанс призвать маленького помощника — 20%; двойной разрез даёт две отдельные возможности. Молот не отбрасывает врагов; сокрушение перезаряжается за 1 обычное попадание.</p><p>Помощник получает случайный серп или молот, живёт 15 секунд и наносит 25% урона героя. Каждый третий удар бьёт по площади. Помощник с серпом с вероятностью 5% за каждого задетого этим ударом врага призывает нового помощника. Одновременно может быть не больше 6 помощников.</p></div>` : '';
     const level = weaponLevel(it);
     const stats = itemLines(it).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
-    const rows = p.levels.map((row, i) => {
+    const rows = p.levels.map((baseRow, i) => {
+      let row = baseRow;
+      if (harvest && it.def === 'sword' && i >= 3) row = { title: 'Серп · синергия', description: 'Парирование отключено. Каждый враг, задетый разрезом, даёт 20% шанс призвать помощника; каждый из двух разрезов проверяется отдельно.' };
+      if (harvest && it.def === 'hammer') {
+        let description = row.description.replace('отбрасывания и ', '').replace('отбрасывание, ', '');
+        if (i === 1) description = description.replace('3 обычных попадания', '1 обычное попадание');
+        row = { ...row, description };
+      }
       const unlocked = level >= i + 1;
       return `<li class="weapon-level ${unlocked ? 'unlocked' : 'locked'} ${level === i + 1 ? 'current' : ''}"><span class="weapon-level-num">${i + 1}</span><div><strong>${row.title}</strong><small>${unlocked ? 'Открыто' : 'Заблокировано · уровень ' + (i + 1)}</small><p>${row.description}</p></div></li>`;
     }).join('');
-    tip.innerHTML = `<div class="weapon-fixed"><div class="card-head">${cellHtml(it, 'disabled', '', '', 'big', this.game.wearer)}<div class="card-title"><h3>${itemName(it, this.game.faction)}</h3><div class="pills"><span>${p.typeName}</span><span>Уровень ${level}/5</span></div></div><button class="xbtn" data-act="close" aria-label="Закрыть описание оружия">✕</button></div>
+    tip.innerHTML = `<div class="weapon-fixed"><div class="card-head">${cellHtml(it, 'disabled', '', '', 'big', this.game.wearer)}<div class="card-title"><h3>${harvest && it.def === 'sword' ? 'Серп' : itemName(it, this.game.faction)}</h3><div class="pills"><span>${harvest && it.def === 'sword' ? 'Серп · меч в синергии' : p.typeName}</span><span>Уровень ${level}/5</span></div></div><button class="xbtn" data-act="close" aria-label="Закрыть описание оружия">✕</button></div>
       ${src.at === 'bag' ? '<div class="row weapon-equip-actions"><button class="btn primary" data-act="equip-0">В круг 1</button><button class="btn primary" data-act="equip-1">В круг 2</button></div>' : `<p class="weapon-equipped">Экипировано · круг ${src.at === 'weapon' ? src.slot + 1 : 1}</p>${src.at === 'weapon' && src.slot === 1 ? '<button class="btn" data-act="unequip">Снять</button>' : ''}`}
       <div class="card-sub weapon-stats">${stats}</div>
       <div class="weapon-level-controls"><button class="btn" data-act="level-down" aria-label="Уменьшить уровень" ${level <= 1 ? 'disabled' : ''}>− уровень</button><strong>${level} / 5</strong><button class="btn primary" data-act="level-up" aria-label="Увеличить уровень" ${level >= 5 ? 'disabled' : ''}>+ уровень</button></div></div>
-      <div class="weapon-scroll"><p class="weapon-description">${p.description}</p><ol class="weapon-levels">${rows}</ol>
-      <div class="weapon-awakening"><button class="btn" data-act="awaken" ${level < 5 || it.awakened ? 'disabled' : ''}>${it.awakened ? '✦ Оружие пробуждено' : '✦ Пробудить оружие'}</button><small>${it.awakened ? 'Доступ к будущим синергиям открыт. Сами синергии пока не добавлены.' : 'Доступно на 5-м уровне. Открывает возможность будущих синергий.'}</small></div>
+      <div class="weapon-scroll">${synergyInfo}<p class="weapon-description">${harvest && it.def === 'sword' ? 'Серп сохраняет удары и дуговые разрезы меча, но заменяет парирование призывом помощников.' : p.description}</p><ol class="weapon-levels">${rows}</ol>
+      <div class="weapon-awakening"><button class="btn" data-act="awaken" ${level < 5 || it.awakened ? 'disabled' : ''}>${it.awakened ? '✦ Оружие пробуждено' : '✦ Пробудить оружие'}</button><small>${it.awakened ? (harvest ? 'Синергия активна.' : harvestWeapon ? 'Пробуди и экипируй второе оружие пары, чтобы включить синергию.' : 'Оружие готово к будущим синергиям.') : 'Доступно на 5-м уровне. Для синергии нужно пробудить оба оружия пары.'}</small></div>
       </div>`;
     this.bindTip(tip, src);
   }

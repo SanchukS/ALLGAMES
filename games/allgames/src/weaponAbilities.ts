@@ -38,7 +38,7 @@ export function planWeaponAttack(def: string, level: number, gesture: AttackGest
 /** Cooldowns measured in successful ordinary enemy hits, never elapsed time. */
 export class AbilityCharges {
   readonly remaining: [number, number] = [0, 0];
-  use(slot: 0 | 1) { this.remaining[slot] = 3; }
+  use(slot: 0 | 1, hits = 3) { this.remaining[slot] = hits; }
   normalHit() {
     this.remaining[0] = Math.max(0, this.remaining[0] - 1);
     this.remaining[1] = Math.max(0, this.remaining[1] - 1);
