@@ -842,6 +842,9 @@ export class Game {
         h.flight = Math.min((h.aim?.pos.distanceTo(this.hero.position) ?? w.range) / STAFF_BOLT_SPEED, period * 0.5);
       }
       if (plan.kind === 'pull') this.hero.swing('slashRL', h.i, .9, .25);
+      // Swinger mirrors these local directions for the left hand. Always start
+      // sword skills from the weapon side, independently of the normal-hit combo.
+      else if (it.def === 'sword' && (plan.kind === 'sweep' || plan.kind === 'doubleSweep')) this.hero.swing('slashRL', h.i, period, impactAt);
       else if (w.shot) {
         // the bow arm points at the target, the other one draws the string
         this.hero.swing('aim', 1, period, impactAt);

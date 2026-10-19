@@ -395,3 +395,18 @@ test('double cut waits half a second and animates its return before impact', () 
   g.updateHand(h, .18, null); assert.equal(calls.length, 1);
   g.updateHand(h, .02, null); assert.equal(calls.length, 2);
 });
+
+
+test('sword cuts start on weapon side and return, in either hand after any normal combo', () => {
+  for (const hand of [0, 1]) for (const combo of [0, 1, 2, 3]) {
+    const { g, h, item } = setup();
+    g.save.weapons = hand === 0 ? [item, null] : [null, item];
+    h.i = hand; h.combo = combo;
+    const swings: unknown[][] = [];
+    g.hero.swing = (...args: unknown[]) => swings.push(args);
+    g.updateHand(h, .01, { aimed: true, heldSeconds: 0, yaw: 0, sweepYaw: 0, sweepCount: 2 });
+    g.updateHand(h, .4, null);
+    g.updateHand(h, .31, null);
+    assert.deepEqual(swings.map(s => s.slice(0, 2)), [['slashRL', hand], ['slashLR', hand]]);
+  }
+});
