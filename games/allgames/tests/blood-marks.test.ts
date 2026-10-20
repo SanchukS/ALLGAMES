@@ -6,7 +6,13 @@ import { BloodMarks } from '../src/bloodMarks';
 test('blood marks cap at two, refresh for eight seconds, follow and consume once', () => {
   const scene = new THREE.Scene(), marks = new BloodMarks(scene);
   const target = { pos: new THREE.Vector3(), hittable: true };
-  marks.add(target, 0); marks.add(target, 7); marks.add(target, 8);
+  marks.add(target, 0);
+  const counter = scene.getObjectByName('blood-mark-count') as THREE.Sprite;
+  const firstMaterial = counter.material;
+  assert.equal(counter.userData.count, 1);
+  marks.add(target, 7); marks.add(target, 8);
+  assert.equal(counter.userData.count, 2);
+  assert.notEqual(counter.material, firstMaterial);
   target.pos.x = 3; marks.update(15);
   assert.equal(scene.children[0].position.x, 3);
   assert.equal(marks.consume(target, 15), 2);
