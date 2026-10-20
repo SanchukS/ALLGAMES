@@ -1,3 +1,4 @@
+import { AdaptiveQuality, renderPixelRatio } from './performance';
 import '@fontsource/rubik/600.css';
 import '@fontsource/rubik/700.css';
 import '@fontsource/rubik/800.css';
@@ -28,10 +29,14 @@ import { Post } from './post';
 
 const ui = new UI();
 const app = ui.app;
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const mobileGraphics = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+let lowGraphics = mobileGraphics;
+let resolutionScale = 1;
+const adaptiveQuality = new AdaptiveQuality();
+const renderer = new THREE.WebGLRenderer({ antialias: !mobileGraphics, powerPreference: 'high-performance' });
+renderer.setPixelRatio(renderPixelRatio(lowGraphics, mobileGraphics, devicePixelRatio, Math.max(app.clientWidth, app.clientHeight)));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !lowGraphics;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.className = 'game';
 app.prepend(renderer.domElement);
@@ -50,7 +55,7 @@ renderer.domElement.addEventListener('webglcontextrestored', () => {
 const input = new Input(app);
 const labels = document.getElementById('labels')!;
 /** Glow, grade and vignette over the game view (src/post.ts); null on low graphics. */
-let post: Post | null = new Post(renderer);
+let post: Post | null = lowGraphics ? null : new Post(renderer);
 
 const rotationRequired = matchMedia('(orientation: portrait) and (pointer: coarse)');
 const hasFinePointer = matchMedia('(any-pointer: fine)');
@@ -66,6 +71,7 @@ function resize() {
   if (w !== viewportWidth || h !== viewportHeight) input.reset();
   viewportWidth = w;
   viewportHeight = h;
+  renderer.setPixelRatio(renderPixelRatio(lowGraphics, mobileGraphics, devicePixelRatio, Math.max(w, h), resolutionScale));
   renderer.setSize(w, h, false);
   post?.resize();
   ui.fit();
@@ -130,8 +136,9 @@ ui.loading(1, 'Готово');
 let game: Game | null = null;
 
 function applyGfx(low: boolean) {
+  lowGraphics = low; resolutionScale = 1; adaptiveQuality.reset();
   renderer.shadowMap.enabled = !low;
-  renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio, 2));
+
   if (low) { post?.dispose(); post = null; } else post ??= new Post(renderer);
   resize();
   game?.setLowGfx(low);
@@ -151,7 +158,8 @@ function startGame(faction: FactionId, fresh: boolean, gains?: Gains) {
   game.camera.aspect = app.clientWidth / app.clientHeight;
   game.camera.updateProjectionMatrix();
   ui.showHud(true);
-  applyGfx(!!save.lowGfx);
+  save.lowGfx ??= mobileGraphics;
+  applyGfx(save.lowGfx);
   const inv = new Inventory(ui, game);
   ui.onBag = ui.onArmor = game.onOpenCharacter = game.onOpenBag = () => { input.reset(); inv.open(); };
   ui.onClass = (c) => game?.switchClass(c);
@@ -299,16 +307,32 @@ function factionScreen(gains: Gains) {
 
 function run() {
   clock.getDelta();
+  let frames = 0, seconds = 0;
+  renderer.info.autoReset = false;
   renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
-    if (!game) return;
+    if (!game || document.hidden || game.offscreen) return;
     const { w, h } = { w: app.clientWidth, h: app.clientHeight };
     if (game.camera.aspect !== w / h) { game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); resize(); }
     game.viewH = renderer.domElement.height;
     if (!pausedForRotation()) game.update(dt);
-    if (game.offscreen) return;
+    if (game.offscreen || document.hidden) return;
+    const qualityChange = adaptiveQuality.sample(dt, lowGraphics, resolutionScale, !game.paused && !pausedForRotation());
+    if (qualityChange === 'low') {
+      game.save.lowGfx = true;
+      applyGfx(true); game.persist();
+      ui.toast('Для плавности включена облегчённая графика');
+    } else if (qualityChange === 'reduce') {
+      resolutionScale = Math.max(.6, resolutionScale - .15); resize();
+    }
+    renderer.info.reset();
     if (post) post.render(game.scene, game.camera);
     else renderer.render(game.scene, game.camera);
+    frames++; seconds += dt;
+    if (seconds >= 1) {
+      Object.assign(game.performanceStats, { fps: Math.round(frames / seconds), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, pixelRatio: renderer.getPixelRatio() });
+      frames = 0; seconds = 0;
+    }
   });
 }
 

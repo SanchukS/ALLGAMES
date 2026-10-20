@@ -30,6 +30,53 @@ export function rng(seed: number) {
 }
 
 export interface Obstacle { x: number; z: number; r: number; }
+/** Static circles bucketed by their full bounds, including large buildings across cell edges. */
+export class ObstacleGrid {
+  private cells = new Map<string, number[]>();
+  private readonly size = 8;
+  constructor(private readonly obstacles: readonly Obstacle[]) {
+    obstacles.forEach((o, i) => {
+      for (let x = Math.floor((o.x - o.r) / this.size); x <= Math.floor((o.x + o.r) / this.size); x++) {
+        for (let z = Math.floor((o.z - o.r) / this.size); z <= Math.floor((o.z + o.r) / this.size); z++) {
+          const key = `${x},${z}`;
+          let bucket = this.cells.get(key);
+          if (!bucket) this.cells.set(key, bucket = []);
+          bucket.push(i);
+        }
+      }
+    });
+  }
+
+  candidates(x: number, z: number, radius: number, from = 0) {
+    const ids = new Set<number>();
+    for (let cx = Math.floor((x - radius) / this.size); cx <= Math.floor((x + radius) / this.size); cx++) {
+      for (let cz = Math.floor((z - radius) / this.size); cz <= Math.floor((z + radius) / this.size); cz++) {
+        for (const i of this.cells.get(`${cx},${cz}`) ?? []) if (i >= from) ids.add(i);
+      }
+    }
+    return [...ids].sort((a, b) => a - b);
+  }
+
+  resolve(p: THREE.Vector3, radius: number) {
+    let candidates = this.candidates(p.x, p.z, radius);
+    for (let at = 0; at < candidates.length; at++) {
+      const index = candidates[at];
+      const o = this.obstacles[index];
+      const dx = p.x - o.x, dz = p.z - o.z;
+      const rr = o.r + radius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < rr * rr && d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        p.x = o.x + dx / d * rr;
+        p.z = o.z + dz / d * rr;
+        // A push can enter another cell. Preserve the original single-pass obstacle order,
+        // including newly encountered later circles, without revisiting earlier ones.
+        candidates = this.candidates(p.x, p.z, radius, index + 1);
+        at = -1;
+      }
+    }
+  }
+}
 /**
  * A spawn: one unit (config SPAWNERS / PROP_SPAWNERS) or a pack (PackDef). `id` keys its saved charge state;
  * `charges`: cooldowns per clear; (x, z): its centre.
@@ -210,6 +257,7 @@ function bands(items: Inst[]) {
 export class World {
   readonly group = new THREE.Group();
   readonly obstacles: Obstacle[] = [];
+  private obstacleGrid!: ObstacleGrid;
   /** Every spawner on the island: mobs and breakable props alike. */
   readonly spawns: SpawnPoint[] = [];
   readonly bosses: { mob: string; x: number; z: number }[] = [];
@@ -262,6 +310,8 @@ export class World {
     this.buildCemetery();
     this.buildOuterLands();
     this.buildRim();
+    // All static insertion/removal is complete. Gates keep their own live obstacle lists.
+    this.obstacleGrid = new ObstacleGrid(this.obstacles);
     this.layers.commit(); // (no grass in the ponds: the bake follows their shores)
     this.grassField = buildGrassField(colorMap, this.layers);
     const clutter = [this.grassField.mesh, ...buildDecor((x, z, pad) => this.free(x, z, pad), this.treeSpots)];
@@ -321,7 +371,10 @@ export class World {
   free(x: number, z: number, pad = 0.6, avoidPath = false) {
     if (!walkable(x, z, pad)) return false;
     if (avoidPath && pathDist(x, z) < PATH_W * 0.5 + 1.6) return false;
-    for (const o of this.obstacles) if ((x - o.x) ** 2 + (z - o.z) ** 2 < (o.r + pad) ** 2) return false;
+    const nearby = this.obstacleGrid
+      ? this.obstacleGrid.candidates(x, z, pad).map(i => this.obstacles[i])
+      : this.obstacles; // Generation queries run before the static index is built.
+    for (const o of nearby) if ((x - o.x) ** 2 + (z - o.z) ** 2 < (o.r + pad) ** 2) return false;
     return true;
   }
 
@@ -1857,7 +1910,7 @@ export class World {
         p.z = o.z + (dz / d) * rr;
       }
     };
-    for (const o of this.obstacles) push(o);
+    this.obstacleGrid.resolve(p, radius);
     for (const gt of this.gates) if (!gt.open) for (const o of gt.obstacles) push(o);
     const o = outside(p.x, p.z) + radius * 0.5;
     if (o > 0) {

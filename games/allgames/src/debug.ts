@@ -274,7 +274,9 @@ export class DebugPanel {
     const looks = this.game.debugLooks;
     this.el.querySelectorAll<HTMLElement>('.set').forEach((b) =>
       b.classList.toggle('on', CLASS_IDS.some((c) => b.classList.contains(c) && b.classList.contains(`r${looks[c]}`))));
+    const perf = this.game.performanceStats;
     this.info.textContent = [
+      `FPS ${perf.fps} · вызовы ${perf.calls} · треугольники ${Math.round(perf.triangles / 1000)} тыс. · DPR ${perf.pixelRatio.toFixed(2)}`,
       `Радиус атаки: ${Math.round(d.attackRadius)} px (настройка ${d.attackRadiusSetting} px)`,
       `ХП ${d.hp}/${d.maxHp}${d.god ? '  [бессмертие]' : ''}`,
       `Крит ${pct(d.crit)} ×${d.critMul.toFixed(2)}  уклон ${pct(d.dodge)}  ${d.speed.toFixed(2)} м/с`,

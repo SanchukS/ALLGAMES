@@ -148,6 +148,10 @@ export class UI {
   private bannerT = 0;
   private hintT = 0;
   private lastHud = '';
+  private lastHudHp = '';
+  private lastHudStats = '';
+  private lastHudBuffs = '';
+  private lastHudBosses = '';
   /** Location clear bar: the location on it, its share (0..1), the number shown (counts up) and that count's frame. */
   private clr = { zone: '', p: 0, shown: 0, raf: 0, bannerT: 0 };
   onSettings: () => void = () => {};
@@ -161,8 +165,15 @@ export class UI {
   onFlyEnd: (el: FlyEl) => void = () => {};
   private gains = new Map<OrbKind, { el: HTMLDivElement; n: number; until: number }>();
   private mm = $<HTMLCanvasElement>('minimap').getContext('2d')!;
+  private minimapSizeDirty = true;
+  private minimapDpr = 0;
+  private minimapDrawAt = -Infinity;
 
   constructor() {
+    // CSS layout can change independently of a window resize (for example an expanded map).
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => { this.minimapSizeDirty = true; }).observe(this.mm.canvas);
+    }
     $('btn-settings').addEventListener('click', () => { sfx.click(); this.onSettings(); });
     $('btn-bag').addEventListener('click', () => { sfx.click(); this.onBag(); });
     $('btn-gacha').addEventListener('click', () => { sfx.click(); this.onGacha(); });
@@ -203,6 +214,7 @@ export class UI {
     st.setProperty('--hh', `${h}px`);
     st.setProperty('--mw', `${w}px`);
     st.setProperty('--mh', `${h}px`);
+    this.minimapSizeDirty = true;
   }
 
   /** HUD and canvas share the same unscaled app coordinates. */
@@ -221,20 +233,36 @@ export class UI {
     const key = JSON.stringify(s);
     if (key === this.lastHud) return;
     this.lastHud = key;
-    const hp = $('hp');
-    (hp.querySelector('.fill') as HTMLElement).style.width = `${(s.hp / s.maxHp) * 100}%`;
-    (hp.querySelector('span') as HTMLElement).textContent = `${fmtK(Math.ceil(s.hp))} / ${fmtK(s.maxHp)}`;
+    const hpKey = `${s.hp}/${s.maxHp}`;
+    if (hpKey !== this.lastHudHp) {
+      this.lastHudHp = hpKey;
+      const hp = $('hp');
+      (hp.querySelector('.fill') as HTMLElement).style.width = `${(s.hp / s.maxHp) * 100}%`;
+      (hp.querySelector('span') as HTMLElement).textContent = `${fmtK(Math.ceil(s.hp))} / ${fmtK(s.maxHp)}`;
+    }
     const st = s.stats;
-    const vals: Record<OrbKind, string> = {
-      power: fmtK(st.power), hp: fmtK(st.hp), regen: fmtK(st.regen), speed: fmtK(st.speed),
-    };
-    $('stats').querySelectorAll<HTMLElement>('.st').forEach((el) => {
-      (el.querySelector('span') as HTMLElement).textContent = vals[el.dataset.k as OrbKind];
-    });
-    $('buffs').innerHTML = s.buffs.map((b) => `<div>${b}</div>`).join('');
-    $('bosses').innerHTML = s.bosses.map((b) => `<div class="bw ui-block" title="${b.name}">
+    const statsKey = JSON.stringify(st);
+    if (statsKey !== this.lastHudStats) {
+      this.lastHudStats = statsKey;
+      const vals: Record<OrbKind, string> = {
+        power: fmtK(st.power), hp: fmtK(st.hp), regen: fmtK(st.regen), speed: fmtK(st.speed),
+      };
+      $('stats').querySelectorAll<HTMLElement>('.st').forEach((el) => {
+        (el.querySelector('span') as HTMLElement).textContent = vals[el.dataset.k as OrbKind];
+      });
+    }
+    const buffsKey = JSON.stringify(s.buffs);
+    if (buffsKey !== this.lastHudBuffs) {
+      this.lastHudBuffs = buffsKey;
+      $('buffs').innerHTML = s.buffs.map((b) => `<div>${b}</div>`).join('');
+    }
+    const bossesKey = JSON.stringify(s.bosses);
+    if (bossesKey !== this.lastHudBosses) {
+      this.lastHudBosses = bossesKey;
+      $('bosses').innerHTML = s.bosses.map((b) => `<div class="bw ui-block" title="${b.name}">
       ${b.left > 0 ? '' : '<div class="bw-ready">Готово!</div>'}${art('skull', 62, b.left > 0 ? 'dim' : '')}
       ${b.left > 0 ? `<div class="bw-time">${art('hourglass', 20)}${fmtTime(b.left)}</div>` : `<div class="bw-name">${b.name}</div>`}</div>`).join('');
+    }
   }
 
   popStat(k: OrbKind) {
@@ -703,13 +731,23 @@ export class UI {
 
   // ---------- minimap ----------
   minimap(hero: THREE.Vector3, facing: number, units: THREE.Vector3[], world: World, marks: MapMark[]) {
+    const now = performance.now();
+    const dpr = Math.min(devicePixelRatio, 2);
+    if (dpr !== this.minimapDpr) this.minimapSizeDirty = true;
+    if (!this.minimapSizeDirty && now - this.minimapDrawAt < 100) return;
+    this.minimapDrawAt = now;
     const g = this.mm;
     const S = 220;
     // the backing store follows the on-screen size (HUD scale, expanded map) × the pixel ratio, so nothing is
     // stretched; the drawing itself stays in S × S units
     const c = g.canvas;
-    const px = Math.round(c.getBoundingClientRect().width * Math.min(devicePixelRatio, 2)) || S;
-    if (c.width !== px) c.width = c.height = px;
+    if (this.minimapSizeDirty) {
+      const px = Math.round(c.getBoundingClientRect().width * dpr) || S;
+      if (c.width !== px) c.width = c.height = px;
+      this.minimapSizeDirty = false;
+      this.minimapDpr = dpr;
+    }
+    const px = c.width;
     g.setTransform(px / S, 0, 0, px / S, 0, 0);
     const scale = S / 70; // ~70 m across
     g.clearRect(0, 0, S, S);

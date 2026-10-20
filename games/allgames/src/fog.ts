@@ -69,6 +69,9 @@ export class FogOfWar {
           vec3 d = vW - cameraPosition;
           vec2 g = vW.xz + d.xz * (-vW.y / d.y);
           float seen = texture2D(uFog, (g - uBox.xy) / uBox.zw).r;
+          // Fully explored pixels are transparent for every possible noise value.
+          // Avoid four octaves of noise across the visible, already explored world.
+          if (seen >= 0.999) discard;
           float c = fbm(g * 0.07 + vec2(uTime * 0.015, uTime * 0.01));
           float a = smoothstep(0.3, 0.75, 1.0 - seen + (c - 0.5) * 0.45);
           vec3 col = mix(vec3(0.74, 0.78, 0.88), vec3(0.98, 0.99, 1.0), smoothstep(0.3, 0.75, c));

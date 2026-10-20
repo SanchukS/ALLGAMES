@@ -109,6 +109,8 @@ class Prop extends Unit {
 
 export class Game {
   readonly scene = new THREE.Scene();
+  private minimapAt = -Infinity;
+  readonly performanceStats = { fps: 0, calls: 0, triangles: 0, pixelRatio: 1 };
   private harvestHelpers = new HarvestHelpers<{ position: THREE.Vector3; dead: boolean; mob: Mob }>(this.scene);
   private bloodMarks = new BloodMarks<Mob>(this.scene);
   private get bloodSynergy() { return isBloodSynergy(this.save.weapons); }
@@ -655,8 +657,12 @@ export class Game {
     this.updateAbilityDots();
     this.updateMobBars(w, h);
     this.hudT -= dt;
-    if (this.hudT <= 0) { this.hudT = 0.1; this.refreshHud(false); }
-    this.ui.minimap(this.hero.position, this.hero.facing, this.mapDots(45), this.world, this.mapMarks(45));
+    if (this.hudT <= 0) { this.hudT = .1; this.refreshHud(false); }
+    const mapNow = performance.now();
+    if (mapNow - this.minimapAt >= 100) {
+      this.minimapAt = mapNow;
+      this.ui.minimap(this.hero.position, this.hero.facing, this.mapDots(45), this.world, this.mapMarks(45));
+    }
   }
 
   private updateHero(dt: number) {
@@ -1024,6 +1030,7 @@ export class Game {
 
   private updateHarvestHelpers(dt: number) {
     if (!this.harvestSynergy || this.dead) { this.harvestHelpers.clear(); return; }
+    if (this.harvestHelpers.count === 0) return;
     const stats = this.stats;
     this.harvestHelpers.update(dt, {
       heroPosition: this.hero.position,
@@ -1646,6 +1653,7 @@ export class Game {
     const hp = this.hero.position;
     const heroInCamp = inCamp(hp.x, hp.z);
     let removed = false;
+    const nearbyMobs = this.mobs.filter(m => m.alive && m.pos.distanceToSquared(hp) < 42 * 42);
     for (const m of this.mobs) {
       if (m.removed) { removed = true; continue; }
       const dHero = m.pos.distanceTo(hp);
@@ -1685,7 +1693,7 @@ export class Game {
         if (!m.alive) continue;
       }
       // a static unit only stands: no chasing, no blows, no wandering
-      if (m.passive) { m.ch.update(dt, false); continue; }
+      if (m.passive) { m.ch.update(dt, false, dHero < 34); continue; }
       if (def.boss?.souls) {
         if (m.state === 'chase') this.raiseSouls(m, def.boss.souls, dt);
         let arena = this.arenas.get(m);
@@ -1796,7 +1804,7 @@ export class Game {
         m.knock.multiplyScalar(Math.max(0, 1 - dt * 9));
       }
       // separation between mobs
-      for (const o of this.mobs) {
+      for (const o of nearbyMobs) {
         if (o === m || !o.alive || !o.awake) continue;
         const dx = m.pos.x - o.pos.x;
         const dz = m.pos.z - o.pos.z;
