@@ -2758,6 +2758,22 @@ export class Game {
     this.dressHero();
   }
 
+  /** Give a fresh copy without replacing either equipped weapon. */
+  debugAddWeapon(def: string) {
+    if (!isPrototypeWeapon(def)) return false;
+    if (this.save.bag.length >= BAG_SIZE) {
+      this.ui.toast('Инвентарь заполнен — освободи место');
+      return false;
+    }
+    const item = dropItem({ kind: 'weapon', def, rarity: 0 });
+    this.save.bag.push(item);
+    this.newItems++;
+    this.ui.toast(`Получено: ${itemName(item, this.faction)} · уровень 1`);
+    this.refreshHud(true);
+    this.persist();
+    return true;
+  }
+
   debugGiveWeapon(def: string, slot: 0 | 1 = 0) {
     const old = this.save.weapons[slot];
     this.save.weapons[slot] = dropItem({ kind: 'weapon', def, rarity: 2 });

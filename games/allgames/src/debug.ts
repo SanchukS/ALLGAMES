@@ -1,6 +1,7 @@
 // Debug panel. Floating, does not pause the game, so fights can be watched live. Open: ` (Backquote) or ⚙ → «Дебаг-меню».
 import { sfx } from './audio';
-import { SPAWN_PRESETS, ZONES } from './config';
+import { PROTOTYPE_WEAPONS } from './weaponProgression';
+import { SPAWN_PRESETS, ZONES, WEAPONS } from './config';
 import type { SpawnPreset, SpawnPresetId, ZoneId } from './config';
 import { ARENA, FOREST_MINI, FORT, GATES, ISLAND, LAND_BOSSES } from './island';
 import type { Game } from './game';
@@ -115,6 +116,7 @@ const SECTIONS: [string, Action[]][] = [
     ['Восстановить всех', (g) => g.debugRestoreAll(), 'wide'],
   ]],
   ['Пресеты спавнов', (Object.keys(SPAWN_PRESETS) as SpawnPresetId[]).map((id): Action => [SPAWN_PRESETS[id].name, teleportPreset, '', id])],
+  ['Получить оружие · в инвентарь', PROTOTYPE_WEAPONS.map((def): Action => [WEAPONS[def].name, (g) => g.debugAddWeapon(def)])],
   ['Предметы', [
     // a set's 4 pieces + ring + amulet; pressing the same set again raises the quality (common → mythic → common)
     ['Сет класса', (g) => g.debugGiveArmor(CLASS_SET[g.heroClass]), 'wide'],
