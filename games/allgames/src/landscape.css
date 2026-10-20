@@ -131,6 +131,7 @@
 #i-tip .weapon-tip .weapon-level small, #i-tip .weapon-tip .weapon-awakening small { font-size: 11px; }
 #i-tip .weapon-tip .btn { font-size: 13px; }
 #i-tip .weapon-tip .weapon-level-controls { gap: 5px; margin: 10px 0; }
+#i-tip .weapon-tip .weapon-awakening { margin-top: 0; gap: 5px; }
 #i-tip .weapon-tip .weapon-scroll { touch-action: pan-y; }
 .stats-win { max-width: 740px; max-height: 100%; padding: 14px 18px 24px; }
 .sw-head { margin-bottom: 8px; padding: 8px 48px; }
