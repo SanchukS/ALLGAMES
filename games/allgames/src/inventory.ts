@@ -1,3 +1,4 @@
+import { ENCHANTMENTS, normalizeEnchantments } from './enchantments';
 import { isHarvestSynergy, isBloodSynergy } from './synergy';
 import { isPrototypeWeapon, weaponLevel, WEAPON_PROGRESS } from './weaponProgression';
 import * as THREE from 'three';
@@ -487,9 +488,20 @@ export class Inventory {
       <div class="card-main well"><span>${main[0]}</span><span class="v">${mainIcon}${cmp(main[0], main[1])}</span></div>
       <div class="card-sub">${sub}<div><span>Уровень</span><b>${it.lvl}</b></div></div>
       ${cur ? '<div class="cmp-note">сравнение с надетым</div>' : ''}
-      <div class="ability well">${ability}</div>
+      <div class="ability well">${ability}</div>${this.enchantmentsHtml(it)}
       <div class="row">${actions}</div>`;
     this.bindTip(tip, src);
+  }
+
+  private enchantmentsHtml(it: Item) {
+    if (it.kind !== 'weapon') return '';
+    const enchantments = normalizeEnchantments(it.enchantments);
+    const rows = enchantments.map(entry => {
+      const def = ENCHANTMENTS[entry.id];
+      const chance = Math.round((entry.chance ?? def.chance) * 1000) / 10;
+      return `<p><strong>${def.name} · ${chance}%</strong><br>${def.description.replace(/^\d+(?:[.,]\d+)?% шанс /, '')}</p>`;
+    }).join('');
+    return `<div class="ability well weapon-enchantments"><div class="ab-title">Зачарования · ${enchantments.length} / 3</div>${rows || '<p>Нет зачарований. Пока добавляются через консоль.</p>'}</div>`;
   }
 
   /** Five persistent rows make the next unlock visible without hiding earlier mechanics. */
@@ -520,7 +532,7 @@ export class Inventory {
       <div class="weapon-level-controls"><button class="btn" data-act="level-down" aria-label="Уменьшить уровень" ${level <= 1 ? 'disabled' : ''}>− уровень</button><strong>${level} / 5</strong><button class="btn primary" data-act="level-up" aria-label="Увеличить уровень" ${level >= 5 ? 'disabled' : ''}>+ уровень</button></div>
       <div class="weapon-awakening"><button class="btn primary" data-act="awaken" ${level < 5 || it.awakened ? 'disabled' : ''}>${it.awakened ? '✦ Оружие пробуждено' : '✦ Пробудить оружие'}</button><small>${it.awakened ? (harvest || blood ? 'Синергия активна.' : harvestWeapon || bloodWeapon ? 'Пробуди и экипируй второе оружие пары, чтобы включить синергию.' : 'Оружие готово к будущим синергиям.') : 'Доступно на 5-м уровне. Для синергии нужно пробудить оба оружия пары.'}</small></div>
       <div class="card-sub weapon-stats">${stats}</div></div>
-      <div class="weapon-scroll">${blood ? bloodInfo + synergyInfo : synergyInfo + bloodInfo}<p class="weapon-description">${harvest && it.def === 'sword' ? 'Серп сохраняет удары и дуговые разрезы меча, но заменяет парирование призывом помощников.' : p.description}</p><ol class="weapon-levels">${rows}</ol>
+      <div class="weapon-scroll">${this.enchantmentsHtml(it)}${blood ? bloodInfo + synergyInfo : synergyInfo + bloodInfo}<p class="weapon-description">${harvest && it.def === 'sword' ? 'Серп сохраняет удары и дуговые разрезы меча, но заменяет парирование призывом помощников.' : p.description}</p><ol class="weapon-levels">${rows}</ol>
 
       </div>`;
     this.bindTip(tip, src);

@@ -1,3 +1,4 @@
+import { normalizeEnchantments, type Enchantment } from './enchantments';
 import { isPrototypeWeapon, weaponLevel } from './weaponProgression';
 // Items: weapons + armour, rarity, item level (zone), stats and generation.
 import { DAMAGE_TYPE_NAME, RARITY, RARITY_IDS, SHARPEN, WEAPONS, type FactionId, type ItemDrop, type PetDef, type StatId, type WeaponDef } from './config';
@@ -54,6 +55,8 @@ export interface Item {
   name?: string;
   /** Level-five awakening reserves future synergy access. */
   awakened?: boolean;
+  /** Up to three independent on-hit enchantments. */
+  enchantments?: Enchantment[];
 }
 
 export type ArmorSlot = 'head' | 'chest' | 'arms' | 'legs' | 'ring' | 'amulet';
@@ -285,5 +288,6 @@ export function normalizeItem(it: Partial<Item> & { def: string }): Item {
   const old = /^(peasant|guard|knight|lord)_(head|chest|arms|legs)$/.exec(it.def);
   const def = old ? `plate_${old[2]}` : RENAMED[it.def] ?? it.def;
   const kind = it.kind ?? 'weapon';
-  return { uid: it.uid ?? newUid(), kind, def, rarity: fixedRarity(kind, def) ?? it.rarity ?? 0, sharpen: it.sharpen ?? 0, lvl: kind === 'weapon' && isPrototypeWeapon(def) ? weaponLevel(it) : it.lvl ?? 1, ...(it.awakened && weaponLevel(it) === 5 ? { awakened: true } : {}), ...(it.name ? { name: it.name } : {}) };
+  const enchantments = kind === 'weapon' ? normalizeEnchantments(it.enchantments) : [];
+  return { ...(enchantments.length ? { enchantments } : {}), uid: it.uid ?? newUid(), kind, def, rarity: fixedRarity(kind, def) ?? it.rarity ?? 0, sharpen: it.sharpen ?? 0, lvl: kind === 'weapon' && isPrototypeWeapon(def) ? weaponLevel(it) : it.lvl ?? 1, ...(it.awakened && weaponLevel(it) === 5 ? { awakened: true } : {}), ...(it.name ? { name: it.name } : {}) };
 }

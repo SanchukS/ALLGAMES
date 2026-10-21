@@ -1,3 +1,4 @@
+import { ENCHANTMENTS } from './enchantments';
 import { AdaptiveQuality, renderPixelRatio } from './performance';
 import '@fontsource/rubik/600.css';
 import '@fontsource/rubik/700.css';
@@ -355,7 +356,22 @@ if (existing) {
   if (done) factionScreen(done);
   else prologue();
 }
-Object.assign(window, { __game: () => game });
+Object.assign(window, {
+  __game: () => game,
+  /** Console-only prototype editor; slot is the visible attack-circle number. */
+  __enchant: (slot: number, entries: unknown) => {
+    if (slot !== 1 && slot !== 2) throw new Error('Укажи номер круга оружия: 1 или 2.');
+    if (!game) throw new Error('Сначала начни игру и экипируй оружие.');
+    return game.setWeaponEnchantments(slot === 1 ? 0 : 1, entries);
+  },
+  __enchantList: () => {
+    const entries = Object.entries(ENCHANTMENTS).map(([id, def]) => ({
+      id, name: def.name, chance: def.chance, description: def.description,
+    }));
+    console.table(entries);
+    return entries;
+  },
+});
 if (import.meta.env.DEV) {
   // Level-design overview: __view(x, z, height, back) / __view() to return to the game camera.
   Object.assign(window, {

@@ -1,3 +1,4 @@
+import { BleedEffects, ENCHANTMENT_BALANCE as EB, normalizeEnchantments, rollEnchantments, type EnchantmentProc } from './enchantments';
 import { BloodMarks } from './bloodMarks';
 import { isHarvestSynergy, isBloodSynergy } from './synergy';
 import { HarvestHelpers } from './harvestHelpers';
@@ -109,6 +110,13 @@ class Prop extends Unit {
 
 export class Game {
   readonly scene = new THREE.Scene();
+  private enchantBleeds = new BleedEffects<Mob>();
+  private enchantBuffs = new Map<Mob, { power: number; speed: number }>();
+  private enchantShieldUntil = 0;
+  private enchantStunUntil = 0;
+  private enchantLeap: { from: THREE.Vector3; to: THREE.Vector3; t: number; duration: number } | null = null;
+  private enchantBolts: { line: THREE.Line; until: number }[] = [];
+  private enchantShield: THREE.Mesh | null = null;
   private minimapAt = -Infinity;
   readonly performanceStats = { fps: 0, calls: 0, triangles: 0, pixelRatio: 1 };
   private harvestHelpers = new HarvestHelpers<{ position: THREE.Vector3; dead: boolean; mob: Mob }>(this.scene);
@@ -571,6 +579,7 @@ export class Game {
     if (this.blockers.some((b) => b.until <= this.time)) this.blockers = this.blockers.filter((b) => b.until > this.time);
     this.updateHero(dt);
     this.updateMobs(dt);
+    this.updateEnchantments(dt);
     if (this.bloodSynergy && !this.dead) this.bloodMarks.update(this.time);
     else this.bloodMarks.clear();
     this.updateReaperPulls(dt);
@@ -676,8 +685,9 @@ export class Game {
       if (this.deadT > 1.6) this.respawnInCamp();
       return;
     }
-    const [ix, iy] = this.cut ? [0, 0] : this.input.vector;
-    const moving = !this.leap && Math.hypot(ix, iy) > 0.05;
+    if (this.enchantStunUntil > this.time) this.input.reset();
+    const [ix, iy] = this.cut || this.enchantStunUntil > this.time ? [0, 0] : this.input.vector;
+    const moving = !this.leap && !this.enchantLeap && Math.hypot(ix, iy) > 0.05;
     this.moveDir.set(ix, 0, iy);
     const p = ch.position;
     const speed = this.speed * this.heroSlow;
@@ -692,7 +702,14 @@ export class Game {
       p.lerpVectors(this.leap.from, this.leap.to, f);
       p.y = Math.sin(f * Math.PI) * 1.8;
     }
-    if (!this.leap && this.heroKnock.lengthSq() > 0.001) {
+    if (this.enchantLeap) {
+      const jump = this.enchantLeap;
+      jump.t += dt;
+      const f = Math.min(1, jump.t / jump.duration);
+      p.lerpVectors(jump.from, jump.to, f); p.y = Math.sin(f * Math.PI) * 1.5;
+      if (f >= 1) { this.enchantLeap = null; p.y = 0; }
+    }
+    if (!this.leap && !this.enchantLeap && this.heroKnock.lengthSq() > 0.001) {
       p.addScaledVector(this.heroKnock, dt);
       this.heroKnock.multiplyScalar(Math.max(0, 1 - dt * 9));
     }
@@ -816,6 +833,7 @@ export class Game {
     // the shield never swings, it only answers blows (shieldAnswer); the mage's orb never swings either
     if (w.guard || w.orb) { h.combo = 0; return; }
     h.atkCd -= dt;
+    if (this.enchantStunUntil > this.time) { h.impact = h.second = h.launch = -1; return; }
     if (h.second >= 0) {
       const previous = h.second;
       h.second -= dt;
@@ -884,7 +902,7 @@ export class Game {
           this.hero.position.copy(this.leap.to); this.leap = null;
         }
         this.heroStrike(h, h.yaw, h.aim);
-        if (h.plan?.kind === 'doubleSweep') h.second = 0.5;
+        if (h.plan?.kind === 'doubleSweep' && !(this.enchantStunUntil > this.time)) h.second = 0.5;
       }
       if (h.impact < 0) { h.bolt = null; h.aim = null; }
     }
@@ -978,6 +996,7 @@ export class Game {
       }
     }
     for (const u of targets) {
+      if (!u.hittable) continue;
       if (u instanceof Prop) {
         const hit = this.damageFor(it, u.def, plan.damageScale);
         this.hitProp(u, hit.dmg, hit.tier);
@@ -991,7 +1010,7 @@ export class Game {
       const wasAttacking = m.impact >= 0 || m.casting > 0 || m.animDelay >= 0;
       const before = m.hp;
       const fight = this.fightOf(m);
-      this.damageMob(m, hit.dmg, hit.tier, it.def === 'hammer' ? this.harvestSynergy ? 0 : area ? 9 : 2 : 2, hit.fx);
+      this.weaponHit(it, m, hit.dmg, hit.tier, it.def === 'hammer' ? this.harvestSynergy ? 0 : area ? 9 : 2 : 2, hit.fx, h.yaw);
       if (m.hp >= before) continue;
       hits++;
       fight.hits++;
@@ -1200,7 +1219,7 @@ export class Game {
       const m = u as Mob;
       const { dmg, tier, fx } = this.damageFor(it, m.def);
       this.fightOf(m).hits++;
-      this.damageMob(m, dmg, tier, w.staff ? STAVES[w.staff].knock : 3.5, fx);
+      this.weaponHit(it, m, dmg, tier, w.staff ? STAVES[w.staff].knock : 3.5, fx, yaw);
       if (w.staff && fx !== 'miss') this.staffHit(m, w.staff, dmg, m === focus);
       if (m.alive && !m.def.boss && w.stun && Math.random() < w.stun) m.stun = 0.9;
     }
@@ -1256,7 +1275,7 @@ export class Game {
       if (m === focus || !m.hittable || m.pos.distanceTo(focus.pos) - m.radius > sp.radius) continue;
       if (this.inShape(m.pos, m.radius, shape, arc, range, 0, yaw)) continue;
       const { dmg, tier, fx } = this.damageFor(it, m.def, sp.mul);
-      this.damageMob(m, dmg, tier, STAVES.fire.knock, fx);
+      this.weaponHit(it, m, dmg, tier, STAVES.fire.knock, fx, yaw);
       if (fx !== 'miss') this.staffHit(m, 'fire', dmg, false);
     }
   }
@@ -1285,7 +1304,7 @@ export class Game {
       for (const m of this.mobs) {
         if (!m.hittable || m.passive || m.pos.distanceTo(g.at) - m.radius > o.radius) continue;
         const { dmg, tier, fx } = this.damageFor(it, m.def, o.dmg);
-        this.damageMob(m, dmg, tier, 0, fx);
+        this.weaponHit(it, m, dmg, tier, 0, fx);
         if (!m.alive) continue;
         // knockback slides 1/9 of its speed (see reapPull): pulls `force` of the way to the centre, bosses too
         m.knock.set(g.at.x - m.pos.x, 0, g.at.z - m.pos.z).multiplyScalar(9 * o.force);
@@ -1347,7 +1366,7 @@ export class Game {
     const m = u as Mob;
     const { dmg, tier, fx } = this.damageFor(it, m.def);
     this.fightOf(m).hits++;
-    this.damageMob(m, dmg, tier, 1.5, fx);
+    this.weaponHit(it, m, dmg, tier, 1.5, fx);
   }
 
   /** The pet in the class's second slot (the hunter's), or null. */
@@ -1391,6 +1410,131 @@ export class Game {
 
   /** `fx`: 'crit' shows a bigger number, 'miss' (or no damage at all) — the mob dodged. */
   /** `aggro` false: plain extra damage (the pet's bites) — the mob keeps doing what it did and is not knocked back. */
+  /** Only weapon impacts roll procs. All enchantment damage bypasses this entry point. */
+  private weaponHit(it: Item, m: Mob, damage: number, tier: string, knock: number, fx: HitFx, yaw = this.hero.facing) {
+    if (!m.hittable) return;
+    const procs = damage > 0 && fx !== 'miss' && !m.passive ? rollEnchantments(it.enchantments ?? []) : [];
+    if (procs.includes('critical') && fx !== 'crit') { damage *= EB.criticalMultiplier; fx = 'crit'; }
+    const before = m.hp;
+    this.damageMob(m, damage, tier, knock, fx);
+    if (m.hp >= before || !procs.length) return;
+    const base = this.itemDamage(it);
+    for (const proc of procs) this.applyEnchantment(proc, m, base, yaw);
+  }
+
+  private enchantDamage(m: Mob, damage: number) {
+    if (m.hittable && !m.passive) this.damageMob(m, damage, 'normal', 0);
+  }
+
+  private lightningVisual(from: THREE.Vector3, to: THREE.Vector3) {
+    // Bounded, short-lived geometry even with many area procs.
+    if (this.enchantBolts.length >= 32) return;
+    const points = [from.clone()];
+    for (let i = 1; i < 6; i++) {
+      const p = from.clone().lerp(to, i / 6);
+      p.x += Math.sin(i * 7) * .22; p.z += Math.cos(i * 5) * .22; points.push(p);
+    }
+    points.push(to.clone());
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0x99eaff, transparent: true, opacity: .95 }));
+    this.scene.add(line); this.enchantBolts.push({ line, until: this.time + .22 });
+  }
+
+  private applyEnchantment(proc: EnchantmentProc, m: Mob, base: number, yaw: number) {
+    const at = m.pos.clone().setY(1);
+    switch (proc) {
+      case 'critical': break; // Applied to the original hit, including a critical selected by chaos.
+      case 'bleed':
+        if (m.hittable) { this.enchantBleeds.apply(m, base); this.fx.spawn(at, 'Кровотечение', 'dmg small', .6, { color: '#ff6a79' }); }
+        break;
+      case 'explosion':
+        this.waves.add(m.pos, EB.explosionRadius, 0xff9b46, .3);
+        this.particles.burst(at, 0xff9b46, 8, .1, 5, .3);
+        for (const other of this.mobs) if (other.pos.distanceTo(m.pos) - other.radius <= EB.explosionRadius) this.enchantDamage(other, base * EB.explosionDamage);
+        break;
+      case 'lightning':
+        this.lightningVisual(at.clone().add(new THREE.Vector3(0, 4, 0)), at);
+        this.enchantDamage(m, base * EB.lightningDamage); break;
+      case 'chainLightning': {
+        const visited = new Set<Mob>([m]);
+        this.lightningVisual(at.clone().add(new THREE.Vector3(0, 3, 0)), at);
+        this.enchantDamage(m, base * EB.chainDamage);
+        let current = m;
+        for (let n = 1; n < EB.chainTargets; n++) {
+          let next: Mob | undefined, distance = EB.chainRange ** 2;
+          for (const candidate of this.mobs) {
+            if (visited.has(candidate) || !candidate.hittable || candidate.passive) continue;
+            const d = candidate.pos.distanceToSquared(current.pos);
+            if (d <= distance) { distance = d; next = candidate; }
+          }
+          if (!next) break;
+          visited.add(next);
+          this.lightningVisual(current.pos.clone().setY(1), next.pos.clone().setY(1));
+          this.enchantDamage(next, base * EB.chainDamage); current = next;
+        }
+        break;
+      }
+      case 'heal': {
+        const amount = Math.min(this.maxHp - this.hp, this.maxHp * EB.healFraction);
+        if (amount > 0) { this.hp += amount; this.fx.spawn(this.hero.position.clone().setY(2.5), `+${Math.ceil(amount)}`, 'dmg', .6, { color: '#83ffac' }); }
+        break;
+      }
+      case 'shield':
+        this.enchantShieldUntil = this.time + EB.shieldDuration;
+        this.fx.spawn(this.hero.position.clone().setY(2.5), 'Оберег', 'dmg', .6, { color: '#80dcff' }); break;
+      case 'empowerEnemy': case 'hasteEnemy': {
+        if (!m.hittable) break;
+        const buff = this.enchantBuffs.get(m) ?? { power: 0, speed: 0 };
+        buff[proc === 'empowerEnemy' ? 'power' : 'speed'] = this.time + EB.enemyBuffDuration;
+        this.enchantBuffs.set(m, buff);
+        this.fx.spawn(at, proc === 'empowerEnemy' ? 'Сила +50%' : 'Скорость +50%', 'dmg', .8, { color: '#ff79e1' }); break;
+      }
+      case 'selfStun':
+        this.enchantStunUntil = this.time + EB.selfStunDuration;
+        this.input.reset(); this.attackPreviews.forEach(p => p.hide());
+        for (const hand of this.hands) hand.impact = hand.second = hand.launch = -1;
+        this.leap = this.enchantLeap = null; this.hero.position.y = 0;
+        this.fx.spawn(this.hero.position.clone().setY(2.5), 'Оглушение!', 'hurt', 1, { color: '#ffe184' }); break;
+      case 'leap':
+        if (!this.leap && !this.enchantLeap) this.enchantLeap = {
+          from: this.hero.position.clone().setY(0), to: this.leapTarget(yaw, EB.leapDistance / 7, 5), t: 0, duration: .35,
+        };
+        break;
+    }
+  }
+
+  private updateEnchantments(dt: number) {
+    this.enchantBleeds.update(dt, m => !this.dead && m.hittable, (m, damage) => {
+      this.enchantDamage(m, damage);
+      this.particles.burst(m.pos.clone().setY(1), 0xc93050, 3, .06, 2, .2);
+    });
+    for (const [m, buff] of this.enchantBuffs) if (!m.alive || Math.max(buff.power, buff.speed) <= this.time) this.enchantBuffs.delete(m);
+    for (let i = this.enchantBolts.length - 1; i >= 0; i--) {
+      const bolt = this.enchantBolts[i];
+      if (bolt.until > this.time) continue;
+      bolt.line.removeFromParent(); bolt.line.geometry.dispose(); (bolt.line.material as THREE.Material).dispose(); this.enchantBolts.splice(i, 1);
+    }
+    const shielded = !this.dead && this.enchantShieldUntil > this.time;
+    if (shielded && !this.enchantShield) {
+      this.enchantShield = new THREE.Mesh(new THREE.SphereGeometry(.8, 12, 8), new THREE.MeshBasicMaterial({ color: 0x55cfff, transparent: true, opacity: .18, depthWrite: false }));
+      this.scene.add(this.enchantShield);
+    }
+    if (this.enchantShield) {
+      this.enchantShield.visible = shielded;
+      this.enchantShield.position.copy(this.hero.position).y += 1;
+    }
+  }
+
+  setWeaponEnchantments(slot: 0 | 1, entries: unknown) {
+    if (slot !== 0 && slot !== 1) throw new Error('Номер руки должен быть 1 или 2');
+    const it = this.save.weapons[slot];
+    if (!it || !WEAPONS[it.def]) throw new Error('В выбранной руке нет оружия');
+    const normalized = normalizeEnchantments(entries);
+    if (!Array.isArray(entries) || entries.length > 3 || normalized.length !== entries.length) throw new Error('Нужно до 3 разных известных зачарований; шанс — число от 0 до 1');
+    it.enchantments = normalized;
+    this.persist(); this.refreshHud(true);
+    return it;
+  }
+
   private damageMob(m: Mob, dmg: number, tier: string, knock = 3.5, fx: HitFx = '', aggro = true) {
     if (fx === 'miss' || dmg <= 0) {
       m.state = m.state === 'return' ? 'return' : 'chase';
@@ -1878,6 +2022,7 @@ export class Game {
   }
 
   private stepTo(m: Mob, to: THREE.Vector3, speed: number, dt: number) {
+    if ((this.enchantBuffs?.get(m)?.speed ?? 0) > this.time) speed *= EB.hasteMultiplier;
     if (m.slow > 0) speed *= STAVES.ice.slow.mul;
     v1.set(to.x - m.pos.x, 0, to.z - m.pos.z);
     const d = v1.length();
@@ -2255,6 +2400,7 @@ export class Game {
       this.fx.spawn(v1.copy(this.hero.position).setY(barY), 'Уклон', 'hurt', 0.6, { color: '#9fe8ff', lift });
       return;
     }
+    if (src && (this.enchantBuffs?.get(src)?.power ?? 0) > this.time) raw *= EB.empowerMultiplier;
     const crit = !dot && !!src && Math.random() < critChance(src.def.crit);
     // GDD 10.5: reduction = defense / (defense + 100).
     let dmg = Math.max(1, Math.round(raw * (crit ? critMul(src!.def.critDmg) : 1) * armorMul(s.defense) * this.guardMul() * (0.9 + Math.random() * 0.2)));
@@ -2266,6 +2412,11 @@ export class Game {
       this.particles.burst(this.hero.position.clone().setY(1.2), 0xffdc70, 10, 0.08, 5, 0.3);
     }
     if (dmg <= 0) return;
+    if (!dot && this.enchantShieldUntil > this.time) {
+      this.enchantShieldUntil = 0;
+      this.fx.spawn(this.hero.position.clone().setY(barY), 'Щит!', 'dmg', .6, { color: '#80dcff' });
+      return;
+    }
     if (src) this.shieldAnswer(src, dmg);
     if (src) this.fightOf(src).taken += Math.min(dmg, this.hp);
     this.hp -= dmg;
@@ -2529,6 +2680,10 @@ export class Game {
 
   /** Fresh chains. */
   private resetHands() {
+    this.enchantBleeds?.clear();
+    this.enchantBuffs?.clear();
+    this.enchantShieldUntil = this.enchantStunUntil = 0;
+    this.enchantLeap = null;
     this.harvestHelpers.clear();
     this.bloodMarks.clear();
     this.input.reset();
